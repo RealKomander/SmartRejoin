@@ -1,98 +1,108 @@
-# SmartRejoin
-A Velocity 3.4.0 plugin analogous to RememberMe, but with more capabilities.
+# SmartRejoin for Velocity
 
-## If you're lazy, just install this plugin and it will send players to where they left.
-New players will join a server specified in `velocity.toml`. That is unless you configure SmartRejoin, of course.
+![Java Version](https://img.shields.io/badge/Java-21+-blue?style=for-the-badge&logo=openjdk)
+![Velocity Version](https://img.shields.io/badge/Velocity-3.4.0+-orange?style=for-the-badge)
 
-**More complex usage ideas:**
-- if player was on "bedwars_..." server, join them to a bedwars lobby with the most players online
-- if a player was on "survival", join them to "survival"
-- if a player was in any "lobby_..." server, join them to a random "lobby_..." server
-- if a player was in "afk_..." server, join them to a "lobby_..." server with the least players online
-**You get it, the possibilities are limitless!**
+**SmartRejoin** is a powerful and flexible Velocity plugin that gives you full control over where players connect when they join your network. It's a modern alternative to older reconnect plugins, built with a highly customizable rule-based engine.
 
-## Explained in more details in config.yml:
+---
+
+## Features
+
+- **🧠 Smart Reconnections**: Automatically sends players back to the server they disconnected from.
+- **⚙️ Powerful Rule Engine**: Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
+- **⚖️ Load Balancing**: Distribute players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
+- **🛡️ Robust Fallback System**: Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
+- **🔌 Easy Configuration**: A clean, well-documented `config.yml` makes setup a breeze.
+- **⚡ Live Reload**: Reload the configuration on-the-fly with a simple command—no restart required.
+
+---
+
+## Installation
+
+1.  Download the latest release JAR from the [Releases page](https://github.com/YourUsername/SmartRejoin/releases).
+2.  Place the `SmartRejoin-1.0.0.jar` file into your Velocity proxy's `/plugins` directory.
+3.  Restart your Velocity proxy. A `config.yml` file will be generated in `/plugins/SmartRejoin/`.
+
+---
+
+## Commands & Permissions
+
+| Command | Alias | Permission | Description |
+| :--- | :--- | :--- | :--- |
+| `/smartrejoinreload` | `/srr` | `smartrejoin.command.reload` | Reloads the `config.yml` file. |
+
+---
+
+## Configuration (`config.yml`)
+
+The configuration is split into three main parts: **Fallback**, **Default Rule**, and **Custom Rules**.
+
+### Quick Start
+
+For the simplest setup, just install the plugin. By default (`rule: SAME`), it will automatically reconnect players to the server they left. New players will be handled by your `velocity.toml` configuration. To use the plugin's fallback for new players, set `fallback.enabled: true`.
+
+### Example Use Cases
+
+-   **BedWars Lobby**: If a player leaves `bedwars_12`, send them to the `bedwars_lobby` with the most players.
+-   **Persistent Survival**: If a player leaves `survival`, always send them back to `survival`.
+-   **Random Lobby**: If a player was in any `lobby_` server, send them to another random `lobby_` server.
+-   **AFK Escape**: If a player was in an `afk` server, send them to the `lobby` with the fewest players.
+
+### Full Configuration Example (different from default one!)
+
 ```yml
 # --------------------------------------------------- #
-#               RejoinPlugin Configuration            #
+#               SmartRejoin Configuration             #
 # --------------------------------------------------- #
 
 # --- General Settings ---
 settings:
-  # If true, the plugin will print informational and warning messages to the console.
-  # Critical errors will always be logged regardless of this setting.
-  logging_enabled: false
+  # If true, the plugin will print informational messages to the console.
+  # Critical errors are always logged.
+  logging_enabled: true
 
 # --- Fallback Configuration ---
-# This section defines what happens if the plugin cannot find a valid server
-# for a player according to the rules below.
-# This can happen if the target server is offline or full.
+# Used for new players or when a target server from a rule is offline.
 fallback:
   # If 'enabled', this plugin's fallback logic will be used.
-  # This is highly recommended to override Velocity's default behavior.
-  enabled: false
-
-  # Defines the type of fallback to perform.
-  # - 'RANDOM': Connects the player to a random server whose name CONTAINS the 'name' value.
-  # - 'SERVER': Connects the player to a specific server with an exact 'name'.
+  enabled: true
+  # 'RANDOM': Connects to a random server whose name CONTAINS the 'name' value.
+  # 'SERVER': Connects to a specific server with an exact 'name'.
   type: RANDOM
-
-  # The server name or part of the name to look for.
-  # For example, if type is 'RANDOM' and name is 'lobby', it will find any online server
-  # like 'lobby-1', 'lobby-2', etc., and pick one at random.
   name: "lobby"
 
 # --- Default Rule ---
-# This rule is applied if a player's last server doesn't match any of the specific rules below.
+# Applied if a player's last server doesn't match any custom rules below.
 default:
-  # Defines the action to take.
-  # - 'SAME': Connects the player back to the exact same server they disconnected from.
-  #           If that server is offline, the fallback rule is used.
-  # - 'FALLBACK': Immediately uses the fallback rule defined above.
-  # - 'SMART': A more advanced option. It tries to find a related lobby server.
-  #            It takes the player's last server name, removes common suffixes like numbers
-  #            (e.g., 'bedwars_123' becomes 'bedwars'), and then uses the 'arguments'
-  #            to find a new server.
+  # 'SAME': Connects to the exact same server. (Most common)
+  # 'FALLBACK': Immediately uses the fallback rule.
+  # 'SMART': Finds a related lobby. See comments below for details.
   rule: SAME
-
-  # Arguments for the 'SMART' rule. Not used for 'SAME' or 'FALLBACK'.
-  # The first argument is the selection strategy ('MOST', 'LEAST', 'RANDOM').
-  # The second argument is the name pattern, where '%last_seen%' is a placeholder
-  # for the cleaned-up server name from the player's last session.
-  #
-  # Example: If a player was on 'anarchy_5', %last_seen% becomes 'anarchy'.
-  # The plugin would then look for the server with the MOST players whose name contains 'anarchy_lobby'.
-  # arguments: ['MOST', '%last_seen%_lobby']
+  # Arguments for the 'SMART' rule.
+  # Example: ['MOST', '%last_seen%_lobby']
   arguments: []
 
 # --- Custom Rules ---
-# Define specific redirection rules here. They are checked in the order they appear.
-# The first rule that matches the player's last server will be used.
-# Rule names must be unique. They are for your reference.
-# 'last_seen' defines the condition for this rule to trigger.
-    # Match type:
-    # - 'EQUALS': The player's last server name must be an exact match.
-    # - 'CONTAINS': The player's last server name must contain this string.
-# 'where_to_join' defines where to send the player if the 'last_seen' condition is met.
-    # Target selection strategy:
-    # - 'EQUALS': Connect to a server with this exact name.
-    # - 'MOST': Find all online servers whose names CONTAIN the 'name' string and have at least one slot. Then, connect to the one with the MOST players.
-    # - 'LEAST': Same as 'MOST', but connects to the one with the LEAST players.
-    # - 'RANDOM': Same as 'MOST', but connects to a RANDOM one.
-# Examples are listed below:
+# Define specific redirection rules here. They are checked in order.
 rules:
-#  stay_on_survival:
-#    last_seen:
-#      type: EQUALS
-#      name: "survival"
-#    where_to_join:
-#      type: EQUALS
-#      name: "survival"
-#
-#  bedwars_lobby_fallback:
-#    last_seen:
-#      type: CONTAINS
-#      name: "bedwars"
-#    where_to_join:
-#      type: MOST
-#      name: "bedwars_lobby"```
+  stay_on_survival:
+    last_seen:
+      # Condition: Player's last server name must be an exact match.
+      type: EQUALS
+      name: "survival"
+    where_to_join:
+      # Action: Connect to a server with this exact name.
+      type: EQUALS
+      name: "survival"
+
+  bedwars_lobby_fallback:
+    last_seen:
+      # Condition: Player's last server name must contain "bedwars".
+      type: CONTAINS
+      name: "bedwars"
+    where_to_join:
+      # Action: Find all online servers containing "bedwars_lobby" and
+      # connect to the one with the MOST players.
+      type: MOST
+      name: "bedwars_lobby"
