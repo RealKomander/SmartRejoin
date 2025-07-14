@@ -9,11 +9,11 @@
 
 ## Features
 
-- **🧠 Automatically sends players back to the server they disconnected from.
-- **⚙️ Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
-- **⚖️ Distributes players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
-- **🛡️ Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
-- **⚡ Reload the configuration on-the-fly with a simple command.
+- 🧠 Automatically sends players back to the server they disconnected from.
+- ⚙️ Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
+- ⚖️ Distributes players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
+- 🛡️ Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
+- ⚡ Reload the configuration on-the-fly with a simple command.
 
 ---
 
