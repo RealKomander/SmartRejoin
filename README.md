@@ -20,7 +20,7 @@
 
 ## Installation
 
-1.  Download the latest release JAR from the [Releases page](https://github.com/YourUsername/SmartRejoin/releases).
+1.  Download the latest release JAR from the [Releases page](https://github.com/RealKomander/SmartRejoin/releases).
 2.  Place the `SmartRejoin-1.0.0.jar` file into your Velocity proxy's `/plugins` directory.
 3.  Restart your Velocity proxy. A `config.yml` file will be generated in `/plugins/SmartRejoin/`.
 
