@@ -3,25 +3,24 @@
 ![Java Version](https://img.shields.io/badge/Java-21+-blue?style=for-the-badge&logo=openjdk)
 ![Velocity Version](https://img.shields.io/badge/Velocity-3.4.0+-orange?style=for-the-badge)
 
-**SmartRejoin** is a powerful and flexible Velocity plugin that gives you full control over where players connect when they join your network. It's a modern alternative to older reconnect plugins, built with a highly customizable rule-based engine.
+**SmartRejoin** is a modern alternative to older reconnect plugins, built with a highly customizable rule-based engine.
 
 ---
 
 ## Features
 
-- **🧠 Smart Reconnections**: Automatically sends players back to the server they disconnected from.
-- **⚙️ Powerful Rule Engine**: Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
-- **⚖️ Load Balancing**: Distribute players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
-- **🛡️ Robust Fallback System**: Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
-- **🔌 Easy Configuration**: A clean, well-documented `config.yml` makes setup a breeze.
-- **⚡ Live Reload**: Reload the configuration on-the-fly with a simple command—no restart required.
+- 🧠 Automatically sends players back to the server they disconnected from.
+- ⚙️ Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
+- ⚖️ Distributes players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
+- 🛡️ Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
+- ⚡ Reload the configuration on-the-fly with a simple command.
 
 ---
 
 ## Installation
 
-1.  Download the latest release JAR from the [Releases page](https://github.com/YourUsername/SmartRejoin/releases).
-2.  Place the `SmartRejoin-1.0.0.jar` file into your Velocity proxy's `/plugins` directory.
+1.  Download the plugin
+2.  Place the plugin into your Velocity proxy's `/plugins` directory.
 3.  Restart your Velocity proxy. A `config.yml` file will be generated in `/plugins/SmartRejoin/`.
 
 ---
