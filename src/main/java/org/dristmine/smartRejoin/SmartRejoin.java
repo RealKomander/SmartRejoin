@@ -15,9 +15,9 @@ import java.nio.file.Path;
 @Plugin(
         id = "smartrejoin",
         name = "SmartRejoin",
-        version = "1.0.0",
+        version = "1.1",
         description = "Smartly reconnects players to servers based on their last location.",
-        authors = {"Gemini"}
+        authors = {"Gemini", "Z.ai"}
 )
 public class SmartRejoin {
 

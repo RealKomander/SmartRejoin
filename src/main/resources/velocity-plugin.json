@@ -1,10 +1,11 @@
 {
   "id": "rejoinplugin",
   "name": "RejoinPlugin",
-  "version": "1.0.0",
+  "version": "1.1",
   "description": "Smartly reconnects players to servers based on their last location.",
   "authors": [
-    "Gemini"
+    "Gemini",
+    "Z.ai"
   ],
   "main": "org.dristmine.smartRejoin.SmartRejoin"
 }

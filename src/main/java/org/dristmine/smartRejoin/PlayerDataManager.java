@@ -3,6 +3,7 @@ package org.dristmine.smartRejoin;
 import org.slf4j.Logger;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.error.YAMLException;
 
 import java.io.*;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Manages storing and retrieving the last server a player was on.
@@ -23,6 +25,7 @@ public class PlayerDataManager {
     private final File dataFile;
     private final Yaml yaml;
     private final Map<UUID, String> lastServerMap = new ConcurrentHashMap<>();
+    private final ReentrantLock fileLock = new ReentrantLock();
 
     public PlayerDataManager(SmartRejoin plugin, Path dataDirectory, Logger logger) {
         this.logger = logger;
@@ -65,19 +68,33 @@ public class PlayerDataManager {
                 });
             }
             logger.info("Successfully loaded " + lastServerMap.size() + " player data entries.");
-        } catch (IOException e) {
+        } catch (IOException | YAMLException e) {
             logger.error("Could not load player data from data.yml.", e);
         }
     }
 
     private void saveData() {
-        try (Writer writer = new FileWriter(dataFile)) {
-            // Convert UUID keys to String for YAML serialization
-            Map<String, String> dataToSave = new LinkedHashMap<>();
-            lastServerMap.forEach((uuid, server) -> dataToSave.put(uuid.toString(), server));
-            yaml.dump(dataToSave, writer);
+        fileLock.lock();
+        try {
+            // Write to a temporary file first, then rename for atomic operation
+            File tempFile = new File(dataFile.getParentFile(), dataFile.getName() + ".tmp");
+            try (Writer writer = new FileWriter(tempFile)) {
+                // Convert UUID keys to String for YAML serialization
+                Map<String, String> dataToSave = new LinkedHashMap<>();
+                lastServerMap.forEach((uuid, server) -> dataToSave.put(uuid.toString(), server));
+                yaml.dump(dataToSave, writer);
+            }
+            // Atomic rename - on Windows, we need to delete the target first
+            if (dataFile.exists()) {
+                dataFile.delete();
+            }
+            if (!tempFile.renameTo(dataFile)) {
+                throw new IOException("Failed to rename temporary file to " + dataFile.getAbsolutePath());
+            }
         } catch (IOException e) {
             logger.error("Could not save player data to data.yml.", e);
+        } finally {
+            fileLock.unlock();
         }
     }
 }
