@@ -3,6 +3,8 @@ package org.dristmine.smartRejoin;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
 import com.velocitypowered.api.event.player.PlayerChooseInitialServerEvent;
+import com.velocitypowered.api.event.player.ServerConnectedEvent;
+import com.velocitypowered.api.event.player.ServerPostConnectEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 
@@ -18,6 +20,19 @@ public class PlayerEventHandler {
     }
 
     /**
+     * Fired when a player successfully connects to a server.
+     * We use this to track player connections for the rejoin queue.
+     */
+    @Subscribe
+    public void onServerConnected(ServerConnectedEvent event) {
+        if (plugin.getRejoinQueueManager() != null) {
+            Player player = event.getPlayer();
+            String serverName = event.getServer().getServerInfo().getName();
+            plugin.getRejoinQueueManager().onPlayerConnectedToServer(player.getUniqueId(), serverName);
+        }
+    }
+
+    /**
      * Fired when a player disconnects from the proxy.
      * We use this to record the server they were on.
      */
@@ -27,7 +42,17 @@ public class PlayerEventHandler {
         player.getCurrentServer().ifPresent(serverConnection -> {
             String serverName = serverConnection.getServerInfo().getName();
             plugin.getPlayerDataManager().setLastServer(player.getUniqueId(), serverName);
+
+            // Notify rejoin queue manager of the disconnect
+            if (plugin.getRejoinQueueManager() != null) {
+                plugin.getRejoinQueueManager().onPlayerDisconnectedFromServer(player.getUniqueId(), serverName);
+            }
         });
+
+        // Remove player from rejoin queues if enabled
+        if (plugin.getRejoinQueueManager() != null) {
+            plugin.getRejoinQueueManager().removePlayerFromQueues(player.getUniqueId());
+        }
     }
 
     /**

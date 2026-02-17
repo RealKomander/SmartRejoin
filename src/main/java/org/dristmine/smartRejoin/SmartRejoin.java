@@ -5,6 +5,7 @@ import com.velocitypowered.api.command.CommandManager;
 import com.velocitypowered.api.command.CommandMeta;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
@@ -15,7 +16,7 @@ import java.nio.file.Path;
 @Plugin(
         id = "smartrejoin",
         name = "SmartRejoin",
-        version = "1.1",
+        version = "1.2",
         description = "Smartly reconnects players to servers based on their last location.",
         authors = {"Gemini", "Z.ai"}
 )
@@ -27,6 +28,8 @@ public class SmartRejoin {
     private ConfigManager configManager;
     private PlayerDataManager playerDataManager;
     private ServerFinder serverFinder;
+    private RejoinQueueManager rejoinQueueManager;
+    private String leaveQueueCommandName = null;
 
     @Inject
     public SmartRejoin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -53,12 +56,69 @@ public class SmartRejoin {
                 .build();
         commandManager.register(meta, new ReloadCommand(this));
 
+        // Initialize RejoinQueueManager if enabled
+        if (configManager.getRejoinQueueEnabled()) {
+            this.rejoinQueueManager = new RejoinQueueManager(this);
+            this.rejoinQueueManager.start();
+
+            // Register leave-queue command if enabled
+            if (configManager.getRejoinQueueLeaveCommandEnabled()) {
+                this.leaveQueueCommandName = configManager.getRejoinQueueLeaveCommandName();
+                CommandMeta leaveMeta = commandManager.metaBuilder(leaveQueueCommandName)
+                        .build();
+                commandManager.register(leaveMeta, new LeaveQueueCommand(this));
+            }
+        }
+
         logger.info("SmartRejoin has been enabled successfully.");
+    }
+
+    @Subscribe
+    public void onProxyShutdown(ProxyShutdownEvent event) {
+        // Stop RejoinQueueManager if running
+        if (rejoinQueueManager != null) {
+            rejoinQueueManager.stop();
+        }
+
+        // Unregister leave-queue command if registered
+        if (leaveQueueCommandName != null) {
+            server.getCommandManager().unregister(leaveQueueCommandName);
+        }
+
+        logger.info("SmartRejoin has been disabled.");
     }
 
     public void reload() {
         logger.info("Reloading SmartRejoin configuration...");
+
+        // Stop existing RejoinQueueManager if running
+        if (rejoinQueueManager != null) {
+            rejoinQueueManager.stop();
+            rejoinQueueManager = null;
+        }
+
+        // Unregister existing leave-queue command if registered
+        if (leaveQueueCommandName != null) {
+            server.getCommandManager().unregister(leaveQueueCommandName);
+            leaveQueueCommandName = null;
+        }
+
         if (configManager.loadConfig()) {
+            // Start RejoinQueueManager if enabled
+            if (configManager.getRejoinQueueEnabled()) {
+                this.rejoinQueueManager = new RejoinQueueManager(this);
+                this.rejoinQueueManager.start();
+
+                // Register leave-queue command if enabled
+                if (configManager.getRejoinQueueLeaveCommandEnabled()) {
+                    this.leaveQueueCommandName = configManager.getRejoinQueueLeaveCommandName();
+                    CommandManager commandManager = server.getCommandManager();
+                    CommandMeta leaveMeta = commandManager.metaBuilder(leaveQueueCommandName)
+                            .build();
+                    commandManager.register(leaveMeta, new LeaveQueueCommand(this));
+                }
+            }
+
             logger.info("Configuration reloaded successfully.");
         } else {
             logger.error("Failed to reload configuration. Please check the console for errors.");
@@ -97,5 +157,9 @@ public class SmartRejoin {
 
     public ServerFinder getServerFinder() {
         return serverFinder;
+    }
+
+    public RejoinQueueManager getRejoinQueueManager() {
+        return rejoinQueueManager;
     }
 }

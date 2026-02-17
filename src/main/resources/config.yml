@@ -81,3 +81,61 @@ rules:
 #    where_to_join:
 #      type: MOST
 #      name: "bedwars_lobby"
+
+# --- Rejoin Queue Configuration ---
+# This feature monitors backend servers and automatically queues players for rejoin
+# when their server goes down, then sends them back when it comes back up.
+rejoin_queue:
+  # Enable or disable the rejoin queue feature.
+  # If disabled or absent, the plugin behaves identically to v1.1.
+  enabled: false
+
+  # How often (in ticks) to ping each monitored backend server to check availability.
+  # 20 ticks = 1 second. Default: 100 (5 seconds).
+  monitor_interval: 100
+
+  # Delay (in ticks) before sending the first player after a server comes back up.
+  # Set to 0 to disable. Default: 60 (3 seconds).
+  rejoin_initial_delay: 60
+
+  # Delay (in ticks) between sending each subsequent player from the queue.
+  # Set to 0 to disable. Default: 10 (0.5 seconds).
+  rejoin_cooldown: 10
+
+  # Whitelist configuration for which servers to monitor.
+  whitelist:
+    # Match type for server filtering:
+    # - 'EQUALS': Only monitor servers whose names exactly match entries in the list.
+    # - 'CONTAINS': Monitor servers whose names contain any entry in the list.
+    # - 'ALL': Monitor all backend servers (the list is ignored).
+    type: ALL
+
+    # List of server names to monitor (used only when type is EQUALS or CONTAINS).
+    list:
+      - "server1"
+      - "server2"
+      - "server3"
+
+  # Maximum time (in ticks) to wait for a server to come back up before discarding the queue.
+  # Players will stay on their fallback server - no kick, no message.
+  # Set to 0 to disable. Default: 72000 (~30 minutes).
+  wait_timeout: 72000
+
+  # Actionbar message configuration for queued players.
+  actionbar:
+    enabled: true
+    # MiniMessage format. Placeholders: {server}, {position}, {total}
+    format: "<yellow>Waiting to reconnect to <bold>{server}</bold>... <gray>({position}/{total})</gray>"
+
+  # Leave-queue command configuration.
+  leave_command:
+    enabled: false
+    command: "leavequeue"
+    # MiniMessage format. Placeholder: {server}
+    message_left: "<green>You have left the queue for <bold>{server}</bold>.</green>"
+    # MiniMessage format. No placeholders applicable.
+    message_not_in_queue: "<red>You are not currently in any queue.</red>"
+
+  # Debug mode for troubleshooting rejoin queue issues.
+  # When enabled, detailed logs will be printed for queue operations.
+  debug: false
