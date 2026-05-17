@@ -22,26 +22,63 @@ public class PlayerEventHandler {
     /**
      * Fired when a player successfully connects to a server.
      * We use this to track player connections for the rejoin queue.
+     * Also clears the modded routing flag if the player connects to a different server.
+     * And updates the last server when a player intentionally switches servers.
      */
     @Subscribe
     public void onServerConnected(ServerConnectedEvent event) {
+        Player player = event.getPlayer();
+        String serverName = event.getServer().getServerInfo().getName();
+
+        // Track connections for rejoin queue
         if (plugin.getRejoinQueueManager() != null) {
-            Player player = event.getPlayer();
-            String serverName = event.getServer().getServerInfo().getName();
             plugin.getRejoinQueueManager().onPlayerConnectedToServer(player.getUniqueId(), serverName);
+        }
+
+        // Clear modded routing flag if player connects to a different server
+        if (plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
+            String moddedRoutingTarget = plugin.getConfigManager().getModdedRoutingTargetServer();
+            if (!serverName.equalsIgnoreCase(moddedRoutingTarget)) {
+                // Player connected to a different server, clear the modded routing flag
+                plugin.removePlayerFromModdedRoutingTracking(player.getUniqueId());
+            }
+        }
+
+        // Update last server when player intentionally switches servers
+        // This fixes the bug where players are sent back to old servers after restarts
+        if (!plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
+            // Only update last server if the player wasn't routed via modded routing
+            plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
+            plugin.logInfo("Player " + player.getUsername() + " connected to '" + serverName + "'. Updated last server.");
         }
     }
 
     /**
      * Fired when a player disconnects from the proxy.
      * We use this to record the server they were on.
+     * However, if the player was routed via modded routing, we skip updating the storage
+     * to preserve their original last server.
      */
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
         Player player = event.getPlayer();
         player.getCurrentServer().ifPresent(serverConnection -> {
             String serverName = serverConnection.getServerInfo().getName();
-            plugin.getPlayerDataManager().setLastServer(player.getUniqueId(), serverName);
+
+            // Check if player was routed via modded routing and is disconnecting from the modded routing target
+            if (plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
+                String moddedRoutingTarget = plugin.getConfigManager().getModdedRoutingTargetServer();
+                if (serverName.equalsIgnoreCase(moddedRoutingTarget)) {
+                    // Skip updating storage to preserve the player's original last server
+                    plugin.logInfo("Player " + player.getUsername() + " is disconnecting from modded routing target. Skipping storage update.");
+                } else {
+                    // Player was marked for modded routing but connected to a different server, record it
+                    plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
+                }
+            } else {
+                // Normal behavior: record the last server
+                plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
+            }
 
             // Notify rejoin queue manager of the disconnect
             if (plugin.getRejoinQueueManager() != null) {
@@ -53,6 +90,9 @@ public class PlayerEventHandler {
         if (plugin.getRejoinQueueManager() != null) {
             plugin.getRejoinQueueManager().removePlayerFromQueues(player.getUniqueId());
         }
+
+        // Always clear the modded routing flag on disconnect
+        plugin.removePlayerFromModdedRoutingTracking(player.getUniqueId());
     }
 
     /**
@@ -62,7 +102,7 @@ public class PlayerEventHandler {
     @Subscribe
     public void onPlayerChooseInitialServer(PlayerChooseInitialServerEvent event) {
         Player player = event.getPlayer();
-        Optional<String> lastServerNameOpt = plugin.getPlayerDataManager().getLastServer(player.getUniqueId());
+        Optional<String> lastServerNameOpt = plugin.getStorageManager().getLastServer(player.getUniqueId());
 
         CompletableFuture<Optional<RegisteredServer>> futureServer;
 

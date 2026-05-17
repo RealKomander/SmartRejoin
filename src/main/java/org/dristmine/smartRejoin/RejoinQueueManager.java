@@ -98,10 +98,30 @@ public class RejoinQueueManager {
 
     /**
      * Called when a player connects to a server (for tracking).
+     * Also removes players from queues if they join a different server.
      */
     public void onPlayerConnectedToServer(UUID playerUuid, String serverName) {
         serverPlayerCache.computeIfAbsent(serverName, k -> ConcurrentHashMap.newKeySet()).add(playerUuid);
         playerCurrentServer.put(playerUuid, serverName);
+
+        // If player is in a queue and joined a different server, remove them from the queue
+        Set<String> queuedServers = playerQueueIndex.get(playerUuid);
+        if (queuedServers != null && !queuedServers.isEmpty()) {
+            Set<String> queuedCopy = new HashSet<>(queuedServers);
+            for (String queuedServer : queuedCopy) {
+                if (!queuedServer.equals(serverName)) {
+                    ServerMonitorData data = serverMonitors.get(queuedServer);
+                    if (data != null) {
+                        synchronized (data.queue) {
+                            data.queue.removeIf(e -> e.playerUuid.equals(playerUuid));
+                        }
+                    }
+                    removeFromIndex(playerUuid, queuedServer);
+                    plugin.logInfo("Player " + playerUuid + " left the queue for '" + queuedServer + "' by joining '" + serverName + "'.");
+                }
+            }
+        }
+
         debugLog("Player " + playerUuid + " connected to '" + serverName + "'");
     }
 
@@ -569,6 +589,13 @@ public class RejoinQueueManager {
         boolean isOnTargetServer = isPlayerOnServer(player, serverName);
         debugLog("isOnTargetServer(" + serverName + "): " + isOnTargetServer);
 
+        if (isOnTargetServer) {
+            plugin.logInfo("Player " + player.getUsername() + " is already on '" + serverName + "'. Removing from queue.");
+            removeFromIndex(playerUuid, serverName);
+            scheduleNextDrain(serverName, server, data, cooldownTicks);
+            return;
+        }
+
         // Check if player is on a fallback server
         boolean isOnFallbackServer = isPlayerOnFallbackServer(player);
         debugLog("isOnFallbackServer: " + isOnFallbackServer);
@@ -596,14 +623,16 @@ public class RejoinQueueManager {
                 plugin.logWarn("Failed to send player " + player.getUsername() + " to '" + serverName + "': " + throwable.getMessage());
                 debugLog("Connection failed with exception: " + throwable.getClass().getName() + ": " + throwable.getMessage());
             } else if (!result.isSuccessful()) {
-                plugin.logWarn("Failed to send player " + player.getUsername() + " to '" + serverName + "': " + result.getStatus());
-                debugLog("Connection failed with status: " + result.getStatus());
+                if (result.getStatus().toString().equals("ALREADY_CONNECTED")) {
+                    plugin.logInfo("Player " + player.getUsername() + " is already on '" + serverName + "'. Removing from queue.");
+                } else {
+                    plugin.logWarn("Failed to send player " + player.getUsername() + " to '" + serverName + "': " + result.getStatus());
+                    debugLog("Connection failed with status: " + result.getStatus());
+                }
             } else {
                 plugin.logInfo("Successfully sent player " + player.getUsername() + " to '" + serverName + "'.");
                 debugLog("Connection successful for " + player.getUsername());
             }
-
-            // Remove from index regardless of result
             removeFromIndex(playerUuid, serverName);
         });
 

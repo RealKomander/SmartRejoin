@@ -8,6 +8,15 @@ settings:
   # Critical errors will always be logged regardless of this setting.
   logging_enabled: false
 
+# --- Storage Configuration ---
+# This section defines how player data is stored.
+# SQLite is recommended for large servers with many players.
+storage:
+  # The type of storage backend to use.
+  # - 'yaml': Uses data.yml file. Simple, but may have performance issues with many players.
+  # - 'sqlite': Uses SQLite database. Recommended for large servers. Handles millions of players efficiently.
+  type: "yaml"
+
 # --- Fallback Configuration ---
 # This section defines what happens if the plugin cannot find a valid server
 # for a player according to the rules below.
@@ -81,6 +90,34 @@ rules:
 #    where_to_join:
 #      type: MOST
 #      name: "bedwars_lobby"
+
+# --- Modded Routing Configuration ---
+# This feature allows you to route players with specific Minecraft loaders (e.g., Forge, Fabric)
+# to a specific backend server with highest priority, bypassing all other routing rules.
+modded_routing:
+  # Enable or disable the modded routing feature.
+  # If enabled, the plugin will check if the player's loader and version match the configured values.
+  # If they match, the player will be sent directly to the target_server, ignoring all other rules.
+  # Default: false
+  enabled: false
+
+  # The name of the backend server to connect modded players to.
+  # This server must exist in your Velocity configuration.
+  # Default: "modded_server"
+  target_server: "modded_server"
+
+  # The type of Minecraft loader to match.
+  # Common values: "forge", "fabric", "neoforge", "quilt"
+  # Note: Loader detection relies on the client brand information sent by the client.
+  # Not all clients send this information reliably.
+  # Default: "forge"
+  loader_type: "forge"
+
+  # The Minecraft version to match.
+  # This is checked against the player's protocol version.
+  # Format should be "major.minor.patch" e.g., "1.20.1", "1.19.4"
+  # Default: "1.20.1"
+  minecraft_version: "1.20.1"
 
 # --- Rejoin Queue Configuration ---
 # This feature monitors backend servers and automatically queues players for rejoin

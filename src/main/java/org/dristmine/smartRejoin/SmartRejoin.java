@@ -12,6 +12,9 @@ import com.velocitypowered.api.proxy.ProxyServer;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
 
 @Plugin(
         id = "smartrejoin",
@@ -26,10 +29,14 @@ public class SmartRejoin {
     private final Logger logger;
     private final Path dataDirectory;
     private ConfigManager configManager;
-    private PlayerDataManager playerDataManager;
+    private StorageManager storageManager;
     private ServerFinder serverFinder;
     private RejoinQueueManager rejoinQueueManager;
     private String leaveQueueCommandName = null;
+
+    // Track players who were routed via modded routing
+    // This prevents their last server from being overwritten in data.yml
+    private final Set<UUID> playersRoutedViaModdedRouting = new HashSet<>();
 
     @Inject
     public SmartRejoin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -45,7 +52,16 @@ public class SmartRejoin {
             logger.error("Failed to load configuration. The plugin will not function correctly.");
             return;
         }
-        this.playerDataManager = new PlayerDataManager(this, dataDirectory, logger);
+
+        // Initialize storage manager
+        try {
+            this.storageManager = new StorageManager(this, dataDirectory, logger);
+            storageManager.initialize();
+        } catch (Exception e) {
+            logger.error("Failed to initialize storage manager. The plugin will not function correctly.", e);
+            return;
+        }
+
         this.serverFinder = new ServerFinder(this);
 
         server.getEventManager().register(this, new PlayerEventHandler(this));
@@ -85,6 +101,11 @@ public class SmartRejoin {
             server.getCommandManager().unregister(leaveQueueCommandName);
         }
 
+        // Shutdown storage manager
+        if (storageManager != null) {
+            storageManager.shutdown();
+        }
+
         logger.info("SmartRejoin has been disabled.");
     }
 
@@ -104,6 +125,10 @@ public class SmartRejoin {
         }
 
         if (configManager.loadConfig()) {
+            // Note: Storage backend cannot be changed without server restart
+            // This is intentional to prevent data loss during runtime
+            logger.info("Storage backend remains: " + storageManager.getBackendName());
+
             // Start RejoinQueueManager if enabled
             if (configManager.getRejoinQueueEnabled()) {
                 this.rejoinQueueManager = new RejoinQueueManager(this);
@@ -151,8 +176,17 @@ public class SmartRejoin {
         return configManager;
     }
 
+    public StorageManager getStorageManager() {
+        return storageManager;
+    }
+
+    /**
+     * @deprecated Use {@link #getStorageManager()} instead.
+     */
+    @Deprecated
     public PlayerDataManager getPlayerDataManager() {
-        return playerDataManager;
+        logger.warn("getPlayerDataManager() is deprecated. Use getStorageManager() instead.");
+        return null; // Return null to force code updates
     }
 
     public ServerFinder getServerFinder() {
@@ -161,5 +195,30 @@ public class SmartRejoin {
 
     public RejoinQueueManager getRejoinQueueManager() {
         return rejoinQueueManager;
+    }
+
+    // --- Modded Routing Tracking ---
+
+    /**
+     * Mark a player as being routed via modded routing.
+     * This will prevent their last server from being updated in data.yml when they disconnect.
+     */
+    public void markPlayerRoutedViaModdedRouting(UUID playerUuid) {
+        playersRoutedViaModdedRouting.add(playerUuid);
+    }
+
+    /**
+     * Check if a player was routed via modded routing.
+     */
+    public boolean isPlayerRoutedViaModdedRouting(UUID playerUuid) {
+        return playersRoutedViaModdedRouting.contains(playerUuid);
+    }
+
+    /**
+     * Remove a player from the modded routing tracking set.
+     * This should be called when the player connects to a different server.
+     */
+    public void removePlayerFromModdedRoutingTracking(UUID playerUuid) {
+        playersRoutedViaModdedRouting.remove(playerUuid);
     }
 }
