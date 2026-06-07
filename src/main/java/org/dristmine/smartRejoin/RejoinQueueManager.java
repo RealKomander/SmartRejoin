@@ -101,6 +101,18 @@ public class RejoinQueueManager {
      * Also removes players from queues if they join a different server.
      */
     public void onPlayerConnectedToServer(UUID playerUuid, String serverName) {
+        // Clean up previous server cache entry (only if previous server is not DOWN)
+        String previousServer = playerCurrentServer.get(playerUuid);
+        if (previousServer != null && !previousServer.equals(serverName)) {
+            ServerMonitorData prevData = serverMonitors.get(previousServer);
+            if (prevData == null || prevData.state != ServerState.DOWN) {
+                Set<UUID> prevSet = serverPlayerCache.get(previousServer);
+                if (prevSet != null) {
+                    prevSet.remove(playerUuid);
+                }
+            }
+        }
+
         serverPlayerCache.computeIfAbsent(serverName, k -> ConcurrentHashMap.newKeySet()).add(playerUuid);
         playerCurrentServer.put(playerUuid, serverName);
 
@@ -112,6 +124,9 @@ public class RejoinQueueManager {
                 if (!queuedServer.equals(serverName)) {
                     ServerMonitorData data = serverMonitors.get(queuedServer);
                     if (data != null) {
+                        if (data.state == ServerState.DOWN) {
+                            continue; // player was kicked to fallback; keep them in queue
+                        }
                         synchronized (data.queue) {
                             data.queue.removeIf(e -> e.playerUuid.equals(playerUuid));
                         }

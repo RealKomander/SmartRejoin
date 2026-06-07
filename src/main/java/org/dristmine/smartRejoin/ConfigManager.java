@@ -267,6 +267,17 @@ public class ConfigManager {
         if (val instanceof Boolean) {
             return (Boolean) val;
         }
+        // Handle string representations of booleans
+        if (val instanceof String) {
+            String strVal = ((String) val).toLowerCase();
+            if ("true".equals(strVal) || "yes".equals(strVal) || "1".equals(strVal)) {
+                return true;
+            }
+            if ("false".equals(strVal) || "no".equals(strVal) || "0".equals(strVal)) {
+                return false;
+            }
+        }
+        logger.warn("Configuration value at '{}' is not a valid boolean. Using default: {}", path, def);
         return def;
     }
 
