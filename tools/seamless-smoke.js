@@ -84,7 +84,7 @@ function connect(name) {
  lobby=process.env.STARTING_LOBBY==='1'?null:backend('lobby',32566);
  survival=queueMode?null:backend('survival',32567);
  fs.mkdirSync('plugins/smartrejoin',{recursive:true});
- fs.writeFileSync('plugins/smartrejoin/config.yml',`storage:\n  type: ${process.env.STORAGE || 'yaml'}\nsettings:\n  logging_enabled: true\nfallback:\n  enabled: true\n  type: SERVER\n  name: lobby\nrejoin_queue:\n  enabled: ${queueMode}\n  monitor_interval: 2\n  rejoin_initial_delay: 0\n  rejoin_cooldown: 1\nseamless_reconnect:\n  enabled: ${!queueMode}\n  rejoin_delay: 0\ndefault:\n  rule: SAME\n`);
+ fs.writeFileSync('plugins/smartrejoin/config.yml',`storage:\n  type: ${process.env.STORAGE || 'yaml'}\nsettings:\n  logging_enabled: true\nfallback:\n  enabled: true\n  type: SERVER\n  name: lobby\nrejoin_queue:\n  enabled: ${queueMode}\n  monitor_interval: 2\n  rejoin_initial_delay: 0\n  rejoin_cooldown: 1\nseamless_reconnect:\n  enabled: ${!queueMode}\n  whitelist:\n    type: ${process.env.WHITELIST_SMOKE === '1' ? 'EQUALS' : 'ALL'}\n    list: [survival]\n  rejoin_delay: 0\ndefault:\n  rule: SAME\n`);
  // Preseed this offline UUID's destination.
  const crypto=require('crypto');const hash=crypto.createHash('md5').update('OfflinePlayer:FreezeTester').digest();hash[6]=(hash[6]&15)|48;hash[8]=(hash[8]&63)|128;const h=hash.toString('hex');const uuid=`${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
  const rh=crypto.createHash('md5').update('OfflinePlayer:RelogTester').digest();rh[6]=(rh[6]&15)|48;rh[8]=(rh[8]&63)|128;const r=rh.toString('hex');const relogUuid=`${r.slice(0,8)}-${r.slice(8,12)}-${r.slice(12,16)}-${r.slice(16,20)}-${r.slice(20)}`;
@@ -173,6 +173,13 @@ function connect(name) {
  await waitUntil(()=>client.ended,'ordinary kick disconnect');
  assert(!packets.slice(ordinaryKickStart).some(p=>p.user==='FreezeTester'&&p.name==='set_ticking_state'&&p.is_frozen),'ordinary kick must not freeze');
  console.log('PASS ordinary kicks do not trigger seamless');
+ if (process.env.WHITELIST_SMOKE === '1') {
+   const excludedStart=packets.length;
+   await stopServer(lobby);
+   await waitUntil(()=>relog.ended,'excluded backend uses normal disconnect/fallback');
+   assert(!packets.slice(excludedStart).some(p=>p.user==='RelogTester'&&p.name==='set_ticking_state'&&p.is_frozen),'excluded backend must not freeze');
+   console.log('PASS selected backend freezes; excluded backend uses normal fallback');
+ }
  assert(!proxyLog.some(l=>/ERROR|could not attach|Cannot retain/.test(l)),proxyLog.join(''));
  console.log('PASS Velocity logs clean; '+version);
 })().catch(e=>{console.error(e.stack);console.error(proxyLog.join(''));process.exitCode=1;}).finally(async()=>{

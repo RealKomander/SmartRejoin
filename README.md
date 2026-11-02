@@ -157,6 +157,9 @@ once per second until they return or leave.
 ```yaml
 seamless_reconnect:
   enabled: true
+  whitelist:
+    type: EQUALS
+    list: [survival, creative]
   actionbar: "The server is restarting, /leave to return to lobby"
   recovery_grace: 40
   rejoin_delay: 20
@@ -169,6 +172,12 @@ seamless_reconnect:
 
 - `enabled` defaults to **true for fresh installs**. Existing configurations missing
   the setting receive **false** on upgrade; enable it explicitly to opt in.
+- `whitelist` selects which backends use seamless reconnect, independently of the
+  ordinary rejoin queue whitelist. `type: ALL` (default) includes every backend;
+  `EQUALS` matches exact names ignoring case; `CONTAINS` matches case-sensitive
+  substrings. An empty list with `EQUALS`/`CONTAINS` selects none. Other backends use
+  normal fallback. Apply selection changes with `/srr`; sessions already frozen
+  continue until they reconnect or use `/leave`.
 - `actionbar` accepts MiniMessage. The example above is the exact default text.
 - `recovery_grace` is the delay after failure before checking recovery (default 40
   ticks, minimum 20). Recovery then requires two consecutive successful pings,
@@ -219,5 +228,5 @@ your network. Its target must be registered, online, and have room.
 ### Building and testing
 
 Use JDK 21 and run `bash gradlew clean build`. The deployable release artifact is
-`build/libs/SmartRejoin-1.4.0.jar`; it includes the SQLite driver. The `-plain.jar`
+`build/libs/SmartRejoin-1.4.1.jar`; it includes the SQLite driver. The `-plain.jar`
 is for development and does not bundle runtime dependencies.

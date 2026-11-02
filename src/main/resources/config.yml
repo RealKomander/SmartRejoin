@@ -190,6 +190,14 @@ rejoin_queue:
 seamless_reconnect:
   # Enabled for fresh installs. Existing configs missing this setting receive false.
   enabled: true
+  # Select backends eligible for seamless reconnect. Independent of rejoin_queue's
+  # whitelist. ALL preserves the original behavior; EQUALS selects exact names
+  # (ignoring case); CONTAINS selects case-sensitive substrings. An empty list
+  # with EQUALS/CONTAINS selects no backends. Other backends use normal fallback.
+  whitelist:
+    type: ALL
+    # To enable only selected backends, set type: EQUALS and edit this list.
+    list: [survival, creative]
   # MiniMessage actionbar, refreshed every second for the entire outage.
   actionbar: "The server is restarting, /leave to return to lobby"
   # Grace period after failure before checking recovery (ticks; minimum 20).

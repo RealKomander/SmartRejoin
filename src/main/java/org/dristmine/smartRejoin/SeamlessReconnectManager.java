@@ -84,9 +84,23 @@ public final class SeamlessReconnectManager {
         return !stopped && plugin.getConfigManager().getBoolean("seamless_reconnect.enabled", false);
     }
 
+    /** Checked at failure time so /srr immediately updates backend selection. */
+    boolean isEnabledFor(String serverName) {
+        if (!enabled()) return false;
+        ConfigManager config = plugin.getConfigManager();
+        List<String> names = config.getList("seamless_reconnect.whitelist.list");
+        return switch (config.getString("seamless_reconnect.whitelist.type", "ALL").toUpperCase(Locale.ROOT)) {
+            case "ALL" -> true;
+            case "EQUALS" -> names.stream().anyMatch(serverName::equalsIgnoreCase);
+            case "CONTAINS" -> names.stream().anyMatch(serverName::contains);
+            default -> false;
+        };
+    }
+
     @Subscribe(order = PostOrder.FIRST)
     public void onServerConnected(ServerConnectedEvent event) {
-        if (!enabled() && !sessions.containsKey(event.getPlayer().getUniqueId())) return;
+        if (!isEnabledFor(event.getServer().getServerInfo().getName()) &&
+                !sessions.containsKey(event.getPlayer().getUniqueId())) return;
         Player player = event.getPlayer();
         FrozenProtocol protocol = FrozenProtocol.forVersion(player.getProtocolVersion().getProtocol());
         if (protocol == null || !new AuthenticationGuard(plugin).canRoute(player)) return;
@@ -231,7 +245,8 @@ public final class SeamlessReconnectManager {
         BackendHook(Session session, Object backend) { this.session = session; this.backend = backend; }
 
         private boolean current() {
-            return enabled() && session.player.isActive() && session.backend == backend &&
+            return isEnabledFor(session.target.getServerInfo().getName()) &&
+                    session.player.isActive() && session.backend == backend &&
                     session.player.getCurrentServer().orElse(null) == backend;
         }
 

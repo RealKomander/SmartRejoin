@@ -6,7 +6,7 @@ root. Download an official Velocity 3.4.0 JAR, then install the test dependencie
 ```sh
 npm --prefix tools ci
 VELOCITY_JAR=/absolute/path/velocity.jar \
-PLUGIN_JAR="$PWD/build/libs/SmartRejoin-1.4.0.jar" \
+PLUGIN_JAR="$PWD/build/libs/SmartRejoin-1.4.1.jar" \
 MC_VERSION=1.20.4 LONG_SMOKE=1 node tools/seamless-smoke.js
 ```
 
@@ -42,3 +42,7 @@ checks that ordinary kicks do not trigger a frozen session.
 
 Java unit/regression tests run through `bash gradlew test`. The generated wire
 adapter deliberately has no fallback guess for unknown protocol IDs.
+
+`WHITELIST_SMOKE=1` restricts seamless reconnect to `survival`, runs the selected
+backend outage tests, then verifies that a lobby outage uses ordinary fallback
+instead of freezing.
