@@ -23,7 +23,7 @@ storage:
 # This can happen if the target server is offline or full.
 fallback:
   # If 'enabled', this plugin's fallback logic will be used.
-  # This is highly recommended to override Velocity's default behavior.
+  # When disabled, Velocity's try list supplies fallback servers.
   enabled: false
 
   # Defines the type of fallback to perform.
@@ -41,7 +41,7 @@ fallback:
 default:
   # Defines the action to take.
   # - 'SAME': Connects the player back to the exact same server they disconnected from.
-  #           If that server is offline, the fallback rule is used.
+  #           Attempts offline servers too, allowing AutoServer to start them.
   # - 'FALLBACK': Immediately uses the fallback rule defined above.
   # - 'SMART': A more advanced option. It tries to find a related lobby server.
   #            It takes the player's last server name, removes common suffixes like numbers
@@ -50,7 +50,8 @@ default:
   rule: SAME
 
   # Arguments for the 'SMART' rule. Not used for 'SAME' or 'FALLBACK'.
-  # The first argument is the selection strategy ('MOST', 'LEAST', 'RANDOM').
+  # The first argument is a strategy: MOST, LEAST, RANDOM (substring pool),
+  # or EQUALS, SAME, SERVER (case-insensitive exact destination).
   # The second argument is the name pattern, where '%last_seen%' is a placeholder
   # for the cleaned-up server name from the player's last session.
   #
@@ -96,7 +97,7 @@ rules:
 # to a specific backend server with highest priority, bypassing all other routing rules.
 modded_routing:
   # Enable or disable the modded routing feature.
-  # If enabled, the plugin will check if the player's loader and version match the configured values.
+  # Current matching uses protocol version only; loader_type is not enforced.
   # If they match, the player will be sent directly to the target_server, ignoring all other rules.
   # Default: false
   enabled: false
@@ -108,8 +109,7 @@ modded_routing:
 
   # The type of Minecraft loader to match.
   # Common values: "forge", "fabric", "neoforge", "quilt"
-  # Note: Loader detection relies on the client brand information sent by the client.
-  # Not all clients send this information reliably.
+  # Reserved for future loader detection; currently not enforced.
   # Default: "forge"
   loader_type: "forge"
 
@@ -124,7 +124,7 @@ modded_routing:
 # when their server goes down, then sends them back when it comes back up.
 rejoin_queue:
   # Enable or disable the rejoin queue feature.
-  # If disabled or absent, the plugin behaves identically to v1.1.
+  # When enabled, failed exact connections retain their destination on fallback.
   enabled: false
 
   # How often (in ticks) to ping each monitored backend server to check availability.
@@ -132,12 +132,16 @@ rejoin_queue:
   monitor_interval: 100
 
   # Delay (in ticks) before sending the first player after a server comes back up.
-  # Set to 0 to disable. Default: 60 (3 seconds).
+  # Set to 0 for no initial delay. Default: 60 (3 seconds).
   rejoin_initial_delay: 60
 
   # Delay (in ticks) between sending each subsequent player from the queue.
-  # Set to 0 to disable. Default: 10 (0.5 seconds).
+  # Minimum effective delay is 1 tick. Default: 10 (0.5 seconds).
   rejoin_cooldown: 10
+
+  # Maximum time to retry a starting fallback, in ticks (20 = 1 second).
+  # 0 means one attempt. Requires a fallback server registered in Velocity.
+  fallback_wait_timeout: 200
 
   # Whitelist configuration for which servers to monitor.
   whitelist:
@@ -176,3 +180,32 @@ rejoin_queue:
   # Debug mode for troubleshooting rejoin queue issues.
   # When enabled, detailed logs will be printed for queue operations.
   debug: false
+
+# --- Seamless Reconnect (Minecraft 1.20.3+) ---
+# Alternative to fallback for players ALREADY in a backend when it goes offline.
+# Retains their loaded chunks/entities, freezes client world ticks, locks movement
+# and interactions, and returns them when the backend responds again.
+# Older/unsupported clients and players joining while the backend is down use
+# normal routing/fallback; frozen worlds are never restored after logout.
+seamless_reconnect:
+  # Enabled for fresh installs. Existing configs missing this setting receive false.
+  enabled: true
+  # MiniMessage actionbar, refreshed every second for the entire outage.
+  actionbar: "The server is restarting, /leave to return to lobby"
+  # Grace period after failure before checking recovery (ticks; minimum 20).
+  # A stopping backend may still answer pings. Recovery also requires two
+  # consecutive successful pings, checked once per second.
+  recovery_grace: 40
+  # Extra ticks to wait after stable recovery before reconnecting. 20 = 1 second.
+  rejoin_delay: 20
+  # Abrupt disconnects/timeouts trigger freezing automatically. Explicit kick
+  # packets trigger it ONLY if their text contains one of these phrases (ignoring
+  # case), so ordinary kicks/bans retain their normal behavior. [] disables this.
+  restart_kick_messages:
+    - "server closed"
+    - "restarting"
+    - "server is stopping"
+    - "multiplayer.disconnect.server_shutdown"
+# /leave works while frozen and connects to the configured fallback, or Velocity's
+# try list if fallback is disabled. If the lobby is unavailable, the player stays
+# frozen and can retry /leave. Seamless waiting has no queue timeout.

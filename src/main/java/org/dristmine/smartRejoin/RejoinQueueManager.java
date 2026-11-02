@@ -52,10 +52,10 @@ public class RejoinQueueManager {
      * Tracks state and queue for a single monitored server.
      */
     private static class ServerMonitorData {
-        ServerState state = ServerState.UNKNOWN;
+        volatile ServerState state = ServerState.UNKNOWN;
         final Queue<PlayerQueueEntry> queue = new LinkedList<>();
-        ScheduledTask drainTask = null;
-        long queueCreatedTime = 0; // Timestamp when the queue was created
+        volatile ScheduledTask drainTask = null;
+        volatile long queueCreatedTime = 0; // Timestamp when the queue was created
 
         ServerMonitorData() {
         }
@@ -96,45 +96,52 @@ public class RejoinQueueManager {
         this.debugEnabled = config.getRejoinQueueDebug();
     }
 
+    public boolean isQueued(UUID playerUuid) {
+        return !playerQueueIndex.getOrDefault(playerUuid, Set.of()).isEmpty();
+    }
+
+    /** Queue a failed real connection, including servers already down at login. */
+    public void queuePlayer(Player player, RegisteredServer server) {
+        if (plugin.getSeamlessReconnectManager() != null &&
+                plugin.getSeamlessReconnectManager().isFrozen(player.getUniqueId())) return;
+        if (!getServersToMonitor().contains(server)) return;
+        String name = server.getServerInfo().getName();
+        ServerMonitorData data = serverMonitors.computeIfAbsent(name, k -> new ServerMonitorData());
+        synchronized (monitorLock) {
+            if (playerQueueIndex.getOrDefault(player.getUniqueId(), Set.of()).contains(name)) return;
+            removePlayerFromQueues(player.getUniqueId());
+            data.state = ServerState.DOWN;
+            if (data.drainTask != null) {
+                data.drainTask.cancel();
+                data.drainTask = null;
+            }
+            data.queueCreatedTime = System.currentTimeMillis();
+            synchronized (data.queue) {
+                data.queue.add(new PlayerQueueEntry(player.getUniqueId(), name));
+            }
+            playerQueueIndex.computeIfAbsent(player.getUniqueId(), k -> ConcurrentHashMap.newKeySet()).add(name);
+        }
+    }
+
     /**
      * Called when a player connects to a server (for tracking).
-     * Also removes players from queues if they join a different server.
+     * Completes queue entries when players reach their queued destination.
      */
     public void onPlayerConnectedToServer(UUID playerUuid, String serverName) {
-        // Clean up previous server cache entry (only if previous server is not DOWN)
+        // KickedFromServerEvent now captures failures before fallback; remove stale cache entries.
         String previousServer = playerCurrentServer.get(playerUuid);
         if (previousServer != null && !previousServer.equals(serverName)) {
-            ServerMonitorData prevData = serverMonitors.get(previousServer);
-            if (prevData == null || prevData.state != ServerState.DOWN) {
-                Set<UUID> prevSet = serverPlayerCache.get(previousServer);
-                if (prevSet != null) {
-                    prevSet.remove(playerUuid);
-                }
-            }
+            Set<UUID> prevSet = serverPlayerCache.get(previousServer);
+            if (prevSet != null) prevSet.remove(playerUuid);
         }
 
         serverPlayerCache.computeIfAbsent(serverName, k -> ConcurrentHashMap.newKeySet()).add(playerUuid);
         playerCurrentServer.put(playerUuid, serverName);
 
-        // If player is in a queue and joined a different server, remove them from the queue
-        Set<String> queuedServers = playerQueueIndex.get(playerUuid);
-        if (queuedServers != null && !queuedServers.isEmpty()) {
-            Set<String> queuedCopy = new HashSet<>(queuedServers);
-            for (String queuedServer : queuedCopy) {
-                if (!queuedServer.equals(serverName)) {
-                    ServerMonitorData data = serverMonitors.get(queuedServer);
-                    if (data != null) {
-                        if (data.state == ServerState.DOWN) {
-                            continue; // player was kicked to fallback; keep them in queue
-                        }
-                        synchronized (data.queue) {
-                            data.queue.removeIf(e -> e.playerUuid.equals(playerUuid));
-                        }
-                    }
-                    removeFromIndex(playerUuid, queuedServer);
-                    plugin.logInfo("Player " + playerUuid + " left the queue for '" + queuedServer + "' by joining '" + serverName + "'.");
-                }
-            }
+        // Keep queued players on fallback even after the target becomes UP.
+        // Only reaching the destination completes their queue entry.
+        if (isQueued(playerUuid) && playerQueueIndex.getOrDefault(playerUuid, Set.of()).contains(serverName)) {
+            removePlayerFromQueues(playerUuid);
         }
 
         debugLog("Player " + playerUuid + " connected to '" + serverName + "'");
@@ -175,14 +182,14 @@ public class RejoinQueueManager {
 
         int intervalTicks = config.getRejoinQueueMonitorInterval();
         monitorTask = proxy.getScheduler().buildTask(plugin, this::monitorServers)
-                .repeat(intervalTicks, TimeUnit.MILLISECONDS)
+                .repeat(Math.max(1, intervalTicks) * 50L, TimeUnit.MILLISECONDS)
                 .schedule();
 
         // Start actionbar task if enabled
         if (config.getRejoinQueueActionbarEnabled()) {
             int actionbarIntervalTicks = 20; // Update every 20 ticks (1 second) to prevent fading
             actionbarTask = proxy.getScheduler().buildTask(plugin, this::updateActionbars)
-                    .repeat(actionbarIntervalTicks, TimeUnit.MILLISECONDS)
+                    .repeat(actionbarIntervalTicks * 50L, TimeUnit.MILLISECONDS)
                     .schedule();
         }
 
@@ -210,6 +217,8 @@ public class RejoinQueueManager {
             }
         }
 
+        serverPlayerCache.clear();
+        playerCurrentServer.clear();
         serverMonitors.clear();
         playerQueueIndex.clear();
 
@@ -480,47 +489,11 @@ public class RejoinQueueManager {
         ServerMonitorData data = serverMonitors.computeIfAbsent(serverName, k -> new ServerMonitorData());
         data.queueCreatedTime = System.currentTimeMillis();
 
-        // Clear any existing queue entries for this server (prevents duplicates if state flaps)
-        synchronized (data.queue) {
-            for (PlayerQueueEntry existingEntry : data.queue) {
-                removeFromIndex(existingEntry.playerUuid, serverName);
-            }
-            data.queue.clear();
-        }
-
-        // Add cached players to the queue
         for (UUID playerUuid : new HashSet<>(cachedPlayers)) {
-            // IMPORTANT: Remove player from all OTHER server queues before adding to this one
-            // This prevents players from accumulating in multiple queues
-            Set<String> otherQueues = playerQueueIndex.get(playerUuid);
-            if (otherQueues != null) {
-                for (String otherServer : new HashSet<>(otherQueues)) {
-                    if (!otherServer.equals(serverName)) {
-                        debugLog("Removing " + playerUuid + " from queue for '" + otherServer + "' (now queued for '" + serverName + "')");
-                        ServerMonitorData otherData = serverMonitors.get(otherServer);
-                        if (otherData != null) {
-                            synchronized (otherData.queue) {
-                                otherData.queue.removeIf(e -> e.playerUuid.equals(playerUuid));
-                            }
-                        }
-                        removeFromIndex(playerUuid, otherServer);
-                    }
-                }
+            // A fallback outage must not replace an existing gameplay destination.
+            if (!isQueued(playerUuid)) {
+                proxy.getPlayer(playerUuid).ifPresent(player -> queuePlayer(player, server));
             }
-
-            PlayerQueueEntry entry = new PlayerQueueEntry(playerUuid, serverName);
-
-            synchronized (data.queue) {
-                data.queue.add(entry);
-            }
-
-            // Add to index for fast lookup on disconnect
-            playerQueueIndex.computeIfAbsent(playerUuid, k -> new HashSet<>()).add(serverName);
-
-            // Try to get player name for logging (player might be offline now)
-            proxy.getPlayer(playerUuid).ifPresent(player -> {
-                plugin.logInfo("Player " + player.getUsername() + " (" + playerUuid + ") added to rejoin queue for '" + serverName + "'.");
-            });
         }
 
         // The existing v1.1 fallback logic will handle moving players to fallback servers
@@ -553,7 +526,7 @@ public class RejoinQueueManager {
 
         // Schedule the drain task
         data.drainTask = proxy.getScheduler().buildTask(plugin, () -> drainQueue(serverName, server, data))
-                .delay(initialDelayTicks, TimeUnit.MILLISECONDS)
+                .delay(Math.max(0, initialDelayTicks) * 50L, TimeUnit.MILLISECONDS)
                 .schedule();
     }
 
@@ -561,6 +534,10 @@ public class RejoinQueueManager {
      * Drain the queue for a server, sending players back one by one.
      */
     private void drainQueue(String serverName, RegisteredServer server, ServerMonitorData data) {
+        if (data.state != ServerState.UP) {
+            data.drainTask = null;
+            return;
+        }
         int cooldownTicks = config.getRejoinQueueCooldown();
         debugLog("drainQueue called for server='" + serverName + "'");
 
@@ -633,22 +610,26 @@ public class RejoinQueueManager {
         plugin.logInfo("Sending player " + player.getUsername() + " from " + location + " to '" + serverName + "'.");
         debugLog("Initiating connection request for " + player.getUsername() + " to '" + serverName + "'");
 
+        removeFromIndex(playerUuid, serverName);
         player.createConnectionRequest(server).connect().whenComplete((result, throwable) -> {
             if (throwable != null) {
                 plugin.logWarn("Failed to send player " + player.getUsername() + " to '" + serverName + "': " + throwable.getMessage());
                 debugLog("Connection failed with exception: " + throwable.getClass().getName() + ": " + throwable.getMessage());
+                queuePlayer(player, server);
+                return;
             } else if (!result.isSuccessful()) {
                 if (result.getStatus().toString().equals("ALREADY_CONNECTED")) {
                     plugin.logInfo("Player " + player.getUsername() + " is already on '" + serverName + "'. Removing from queue.");
                 } else {
                     plugin.logWarn("Failed to send player " + player.getUsername() + " to '" + serverName + "': " + result.getStatus());
                     debugLog("Connection failed with status: " + result.getStatus());
+                    queuePlayer(player, server);
+                    return;
                 }
             } else {
                 plugin.logInfo("Successfully sent player " + player.getUsername() + " to '" + serverName + "'.");
                 debugLog("Connection successful for " + player.getUsername());
             }
-            removeFromIndex(playerUuid, serverName);
         });
 
         // Schedule next player
@@ -659,8 +640,9 @@ public class RejoinQueueManager {
      * Schedule the next player in the queue to be sent.
      */
     private void scheduleNextDrain(String serverName, RegisteredServer server, ServerMonitorData data, int cooldownTicks) {
+        if (data.state != ServerState.UP) return;
         data.drainTask = proxy.getScheduler().buildTask(plugin, () -> drainQueue(serverName, server, data))
-                .delay(cooldownTicks, TimeUnit.MILLISECONDS)
+                .delay(Math.max(1, cooldownTicks) * 50L, TimeUnit.MILLISECONDS)
                 .schedule();
     }
 

@@ -1,7 +1,9 @@
 package org.dristmine.smartRejoin;
 
+import com.velocitypowered.api.event.EventTask;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.event.player.PlayerChooseInitialServerEvent;
 import com.velocitypowered.api.event.player.ServerConnectedEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
@@ -9,116 +11,151 @@ import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.server.RegisteredServer;
 
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 public class PlayerEventHandler {
-
     private final SmartRejoin plugin;
+    private final AuthenticationGuard authentication;
+    private final Set<UUID> deferredAuthentication = ConcurrentHashMap.newKeySet();
+    // Preserve the original destination while the player is on temporary fallback.
+    private final java.util.Map<UUID, Long> fallbackDeadlines = new ConcurrentHashMap<>();
+    private final java.util.Map<UUID, String> pendingTargets = new ConcurrentHashMap<>();
 
     public PlayerEventHandler(SmartRejoin plugin) {
         this.plugin = plugin;
+        this.authentication = new AuthenticationGuard(plugin);
     }
 
-    /**
-     * Fired when a player successfully connects to a server.
-     * We use this to track player connections for the rejoin queue.
-     * Also clears the modded routing flag if the player connects to a different server.
-     * And updates the last server when a player intentionally switches servers.
-     */
     @Subscribe
     public void onServerConnected(ServerConnectedEvent event) {
         Player player = event.getPlayer();
-        String serverName = event.getServer().getServerInfo().getName();
-
-        // Track connections for rejoin queue
-        if (plugin.getRejoinQueueManager() != null) {
-            plugin.getRejoinQueueManager().onPlayerConnectedToServer(player.getUniqueId(), serverName);
+        if (!authentication.canRoute(player) || deferredAuthentication.contains(player.getUniqueId())) return;
+        fallbackDeadlines.remove(player.getUniqueId());
+        String name = event.getServer().getServerInfo().getName();
+        String target = pendingTargets.get(player.getUniqueId());
+        if (target != null && target.equalsIgnoreCase(name)) pendingTargets.remove(player.getUniqueId());
+        RejoinQueueManager queue = plugin.getRejoinQueueManager();
+        if (queue != null) queue.onPlayerConnectedToServer(player.getUniqueId(), name);
+        if (plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId()) &&
+                !name.equalsIgnoreCase(plugin.getConfigManager().getModdedRoutingTargetServer())) {
+            plugin.removePlayerFromModdedRoutingTracking(player.getUniqueId());
         }
-
-        // Clear modded routing flag if player connects to a different server
-        if (plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
-            String moddedRoutingTarget = plugin.getConfigManager().getModdedRoutingTargetServer();
-            if (!serverName.equalsIgnoreCase(moddedRoutingTarget)) {
-                // Player connected to a different server, clear the modded routing flag
-                plugin.removePlayerFromModdedRoutingTracking(player.getUniqueId());
-            }
-        }
-
-        // Update last server when player intentionally switches servers
-        // This fixes the bug where players are sent back to old servers after restarts
-        if (!plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
-            // Only update last server if the player wasn't routed via modded routing
-            plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
-            plugin.logInfo("Player " + player.getUsername() + " connected to '" + serverName + "'. Updated last server.");
+        if (!pendingTargets.containsKey(player.getUniqueId()) && (queue == null || !queue.isQueued(player.getUniqueId())) &&
+                !plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
+            plugin.getStorageManager().setLastServer(player.getUniqueId(), name);
         }
     }
 
-    /**
-     * Fired when a player disconnects from the proxy.
-     * We use this to record the server they were on.
-     * However, if the player was routed via modded routing, we skip updating the storage
-     * to preserve their original last server.
-     */
+    @Subscribe
+    public void onServerPostConnect(ServerPostConnectEvent event) {
+        Player player = event.getPlayer();
+        if (!authentication.canRoute(player) || !deferredAuthentication.remove(player.getUniqueId())) return;
+        // NavAuth owns the limbo connection. Route only after its authenticated connection succeeds.
+        chooseServer(player).thenAccept(server -> server.ifPresent(target -> {
+            rememberTarget(player, target);
+            player.createConnectionRequest(target).connect().whenComplete((result, error) -> {
+                if (error != null || !result.isSuccessful()) {
+                    RejoinQueueManager queue = plugin.getRejoinQueueManager();
+                    if (queue != null) queue.queuePlayer(player, target);
+                }
+            });
+        }));
+    }
+
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
         Player player = event.getPlayer();
-        player.getCurrentServer().ifPresent(serverConnection -> {
-            String serverName = serverConnection.getServerInfo().getName();
-
-            // Check if player was routed via modded routing and is disconnecting from the modded routing target
-            if (plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
-                String moddedRoutingTarget = plugin.getConfigManager().getModdedRoutingTargetServer();
-                if (serverName.equalsIgnoreCase(moddedRoutingTarget)) {
-                    // Skip updating storage to preserve the player's original last server
-                    plugin.logInfo("Player " + player.getUsername() + " is disconnecting from modded routing target. Skipping storage update.");
-                } else {
-                    // Player was marked for modded routing but connected to a different server, record it
-                    plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
-                }
-            } else {
-                // Normal behavior: record the last server
-                plugin.getStorageManager().setLastServer(player.getUniqueId(), serverName);
-            }
-
-            // Notify rejoin queue manager of the disconnect
-            if (plugin.getRejoinQueueManager() != null) {
-                plugin.getRejoinQueueManager().onPlayerDisconnectedFromServer(player.getUniqueId(), serverName);
-            }
-        });
-
-        // Remove player from rejoin queues if enabled
-        if (plugin.getRejoinQueueManager() != null) {
-            plugin.getRejoinQueueManager().removePlayerFromQueues(player.getUniqueId());
+        RejoinQueueManager queue = plugin.getRejoinQueueManager();
+        if (authentication.canRoute(player) && !deferredAuthentication.contains(player.getUniqueId()) &&
+                !pendingTargets.containsKey(player.getUniqueId()) &&
+                (queue == null || !queue.isQueued(player.getUniqueId())) &&
+                !plugin.isPlayerRoutedViaModdedRouting(player.getUniqueId())) {
+            player.getCurrentServer().ifPresent(server -> plugin.getStorageManager().setLastServer(
+                    player.getUniqueId(), server.getServerInfo().getName()));
         }
-
-        // Always clear the modded routing flag on disconnect
+        if (queue != null) {
+            player.getCurrentServer().ifPresent(server -> queue.onPlayerDisconnectedFromServer(
+                    player.getUniqueId(), server.getServerInfo().getName()));
+            queue.removePlayerFromQueues(player.getUniqueId());
+        }
+        pendingTargets.remove(player.getUniqueId());
+        fallbackDeadlines.remove(player.getUniqueId());
+        deferredAuthentication.remove(player.getUniqueId());
         plugin.removePlayerFromModdedRoutingTracking(player.getUniqueId());
     }
 
-    /**
-     * Fired when a player is logging in and Velocity needs to decide which server to send them to.
-     * This is the perfect place to implement our custom logic.
-     */
     @Subscribe
-    public void onPlayerChooseInitialServer(PlayerChooseInitialServerEvent event) {
+    public EventTask onPlayerChooseInitialServer(PlayerChooseInitialServerEvent event) {
         Player player = event.getPlayer();
-        Optional<String> lastServerNameOpt = plugin.getStorageManager().getLastServer(player.getUniqueId());
-
-        CompletableFuture<Optional<RegisteredServer>> futureServer;
-
-        if (lastServerNameOpt.isPresent()) {
-            String lastServerName = lastServerNameOpt.get();
-            plugin.logInfo("Player " + player.getUsername() + " is rejoining. Last seen on: " + lastServerName);
-            futureServer = plugin.getServerFinder().findServerFor(player, lastServerName);
-        } else {
-            plugin.logInfo("Player " + player.getUsername() + " has no previous server data. Using fallback logic.");
-            futureServer = plugin.getServerFinder().findFallbackServer();
+        if (plugin.getServer().getPluginManager().getPlugin("navauth").isPresent() || !authentication.canRoute(player)) {
+            deferredAuthentication.add(player.getUniqueId());
+            return null;
         }
+        deferredAuthentication.remove(player.getUniqueId());
+        return EventTask.resumeWhenComplete(chooseServer(player).thenAccept(server -> server.ifPresent(target -> {
+            rememberTarget(player, target);
+            event.setInitialServer(target);
+        })));
+    }
 
-        try {
-            futureServer.join().ifPresent(event::setInitialServer);
-        } catch (Exception e) {
-            plugin.getLogger().error("An exception occurred while finding an initial server for " + player.getUsername(), e);
+    private CompletableFuture<Optional<RegisteredServer>> chooseServer(Player player) {
+        return plugin.getStorageManager().getLastServer(player.getUniqueId())
+                .map(last -> plugin.getServerFinder().findServerFor(player, last))
+                .orElseGet(() -> plugin.getServerFinder().findFallbackServer());
+    }
+
+    private void rememberTarget(Player player, RegisteredServer target) {
+        pendingTargets.put(player.getUniqueId(), target.getServerInfo().getName());
+    }
+
+    @Subscribe
+    public EventTask onKickedFromServer(KickedFromServerEvent event) {
+        Player player = event.getPlayer();
+        if (!authentication.canRoute(player)) return null;
+        RejoinQueueManager queue = plugin.getRejoinQueueManager();
+        RegisteredServer failed = event.getServer();
+        String original = pendingTargets.computeIfAbsent(player.getUniqueId(),
+                id -> failed.getServerInfo().getName());
+        if (queue != null) plugin.getServer().getServer(original).ifPresent(target -> queue.queuePlayer(player, target));
+        long timeout = Math.max(0, plugin.getConfigManager().getInt("rejoin_queue.fallback_wait_timeout", 200)) * 50L;
+        Long deadline = fallbackDeadlines.putIfAbsent(player.getUniqueId(),
+                System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeout));
+        if (deadline != null) {
+            // A real fallback attempt already fired the hooks that start AutoServer.
+            // Wait for that fallback to become ready before redirecting again.
+            return EventTask.resumeWhenComplete(waitForFallback(failed, deadline).thenAccept(server ->
+                    server.ifPresent(target -> event.setResult(KickedFromServerEvent.RedirectPlayer.create(target)))));
         }
+        return EventTask.resumeWhenComplete(plugin.getServerFinder().findFallbackServer().thenAccept(candidate -> {
+            Optional<RegisteredServer> target = candidate.filter(server -> !server.equals(failed));
+            if (target.isEmpty()) {
+                target = plugin.getServer().getConfiguration().getAttemptConnectionOrder().stream()
+                        .map(name -> plugin.getServer().getServer(name)).flatMap(Optional::stream)
+                        .filter(server -> !server.equals(failed)).findFirst();
+            }
+            // Redirect immediately to trigger on-demand startup via ServerPreConnectEvent.
+            target.ifPresent(server -> event.setResult(KickedFromServerEvent.RedirectPlayer.create(server)));
+        }));
+    }
+
+    private CompletableFuture<Optional<RegisteredServer>> waitForFallback(RegisteredServer fallback, long deadline) {
+        if (System.nanoTime() >= deadline) return CompletableFuture.completedFuture(Optional.empty());
+        long remaining = Math.max(1, TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()));
+        return fallback.ping().orTimeout(Math.min(1000, remaining), TimeUnit.MILLISECONDS)
+                .handle((ping, error) -> error == null).thenCompose(online -> {
+                    if (online) return CompletableFuture.completedFuture(Optional.of(fallback));
+                    if (System.nanoTime() >= deadline) return CompletableFuture.completedFuture(Optional.empty());
+                    CompletableFuture<Optional<RegisteredServer>> retry = new CompletableFuture<>();
+                    plugin.getServer().getScheduler().buildTask(plugin, () -> waitForFallback(fallback, deadline)
+                            .whenComplete((result, error) -> {
+                                if (error != null) retry.completeExceptionally(error);
+                                else retry.complete(result);
+                            })).delay(250, TimeUnit.MILLISECONDS).schedule();
+                    return retry;
+                });
     }
 }

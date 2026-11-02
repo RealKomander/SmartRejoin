@@ -153,7 +153,7 @@ public class ServerFinder {
         String name = (String) rule.get("name");
 
         Predicate<RegisteredServer> filter = switch (type) {
-            case "EQUALS", "SAME" -> s -> s.getServerInfo().getName().equalsIgnoreCase(name);
+            case "EQUALS", "SAME", "SERVER" -> s -> s.getServerInfo().getName().equalsIgnoreCase(name);
             default -> s -> s.getServerInfo().getName().contains(name);
         };
 
@@ -163,6 +163,8 @@ public class ServerFinder {
     private CompletableFuture<Optional<RegisteredServer>> findServer(Predicate<RegisteredServer> serverFilter, String strategy, String name) {
         List<RegisteredServer> candidates = proxy.getAllServers().stream()
                 .filter(serverFilter)
+                .filter(server -> plugin.getSeamlessReconnectManager() == null ||
+                        !plugin.getSeamlessReconnectManager().isUnavailable(server.getServerInfo().getName()))
                 .collect(Collectors.toList());
 
         if (candidates.isEmpty()) {
@@ -170,9 +172,15 @@ public class ServerFinder {
             return CompletableFuture.completedFuture(Optional.empty());
         }
 
+        // Exact destinations must receive a real connection attempt. A ping can fail
+        // while an on-demand server is stopped, before AutoServer can start it.
+        if (Set.of("SAME", "EQUALS", "SERVER").contains(strategy.toUpperCase())) {
+            return CompletableFuture.completedFuture(Optional.of(candidates.get(0)));
+        }
+
         Map<RegisteredServer, CompletableFuture<ServerPing>> pingFutures = new HashMap<>();
         for (RegisteredServer server : candidates) {
-            pingFutures.put(server, server.ping());
+            pingFutures.put(server, server.ping().orTimeout(5, java.util.concurrent.TimeUnit.SECONDS));
         }
 
         return CompletableFuture.allOf(pingFutures.values().toArray(new CompletableFuture[0]))
@@ -185,7 +193,7 @@ public class ServerFinder {
                     }
 
                     List<Map.Entry<RegisteredServer, ServerPing>> availableServers = onlineServers.entrySet().stream()
-                            .filter(entry -> entry.getValue().getPlayers().isPresent() &&
+                            .filter(entry -> entry.getValue().getPlayers().isEmpty() ||
                                     entry.getValue().getPlayers().get().getOnline() < entry.getValue().getPlayers().get().getMax())
                             .collect(Collectors.toList());
 
@@ -195,10 +203,10 @@ public class ServerFinder {
                     }
 
                     Optional<Map.Entry<RegisteredServer, ServerPing>> selectedEntry = switch (strategy.toUpperCase()) {
-                        case "MOST" -> availableServers.stream().max(Comparator.comparingInt(e -> e.getValue().getPlayers().get().getOnline()));
-                        case "LEAST" -> availableServers.stream().min(Comparator.comparingInt(e -> e.getValue().getPlayers().get().getOnline()));
+                        case "MOST" -> availableServers.stream().max(Comparator.comparingInt(e -> e.getValue().getPlayers().map(ServerPing.Players::getOnline).orElse(0)));
+                        case "LEAST" -> availableServers.stream().min(Comparator.comparingInt(e -> e.getValue().getPlayers().map(ServerPing.Players::getOnline).orElse(0)));
                         case "RANDOM" -> Optional.of(availableServers.get(new Random().nextInt(availableServers.size())));
-                        case "EQUALS", "SAME" -> availableServers.stream().findFirst();
+                        case "EQUALS", "SAME", "SERVER" -> availableServers.stream().findFirst();
                         default -> Optional.empty();
                     };
 

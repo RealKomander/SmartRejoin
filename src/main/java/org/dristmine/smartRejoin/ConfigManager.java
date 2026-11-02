@@ -34,7 +34,8 @@ public class ConfigManager {
     public boolean loadConfig() {
         try {
             File configFile = new File(dataDirectory.toFile(), "config.yml");
-            if (!configFile.exists()) {
+            boolean existingConfig = configFile.exists();
+            if (!existingConfig) {
                 plugin.logInfo("Configuration file not found, creating a default one...");
                 try (InputStream in = SmartRejoin.class.getResourceAsStream("/config.yml")) {
                     if (in == null) {
@@ -56,6 +57,14 @@ public class ConfigManager {
                 defaultConfig = yaml.load(in);
             }
 
+            // Seamless reconnect is opt-in for existing installations, even when the
+            // section is absent. Fresh installations use the shipped enabled default.
+            if (existingConfig && defaultConfig != null) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> seamless = (Map<String, Object>) defaultConfig.get("seamless_reconnect");
+                if (seamless != null) seamless.put("enabled", false);
+            }
+
             // Load current user config
             Map<String, Object> userConfig;
             try (FileInputStream fis = new FileInputStream(configFile)) {
@@ -75,7 +84,7 @@ public class ConfigManager {
             Map<String, Object> mergedConfig = mergeConfigs(defaultConfig != null ? defaultConfig : new LinkedHashMap<>(), userConfig);
 
             // Check if any entries were added
-            if (mergedConfig.size() != userConfig.size() || !configsEqual(defaultConfig != null ? defaultConfig : new LinkedHashMap<>(), extractStructure(mergedConfig))) {
+            if (!mergedConfig.equals(userConfig)) {
                 logger.info("Updating configuration with missing entries from default config...");
                 this.config = mergedConfig;
                 saveConfig(configFile);
@@ -117,57 +126,6 @@ public class ConfigManager {
         }
 
         return merged;
-    }
-
-    /**
-     * Check if two config structures are equivalent (ignoring leaf values).
-     */
-    @SuppressWarnings("unchecked")
-    private boolean configsEqual(Map<String, Object> config1, Map<String, Object> config2) {
-        if (config1.size() != config2.size()) {
-            return false;
-        }
-
-        for (Map.Entry<String, Object> entry : config1.entrySet()) {
-            String key = entry.getKey();
-            Object value1 = entry.getValue();
-            Object value2 = config2.get(key);
-
-            if (value2 == null) {
-                return false;
-            }
-
-            if (value1 instanceof Map && value2 instanceof Map) {
-                if (!configsEqual((Map<String, Object>) value1, (Map<String, Object>) value2)) {
-                    return false;
-                }
-            } else if (!(value1 instanceof Map) && !(value2 instanceof Map)) {
-                // Both are leaf values, check key existence (not value equality)
-                continue;
-            } else {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /**
-     * Extract just the structure (keys) from a config, ignoring leaf values.
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> extractStructure(Map<String, Object> config) {
-        Map<String, Object> structure = new LinkedHashMap<>();
-        for (Map.Entry<String, Object> entry : config.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-            if (value instanceof Map) {
-                structure.put(key, extractStructure((Map<String, Object>) value));
-            } else {
-                structure.put(key, null);
-            }
-        }
-        return structure;
     }
 
     /**

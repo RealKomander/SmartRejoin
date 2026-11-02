@@ -7,6 +7,7 @@ import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent;
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.plugin.Plugin;
+import com.velocitypowered.api.plugin.Dependency;
 import com.velocitypowered.api.plugin.annotation.DataDirectory;
 import com.velocitypowered.api.proxy.ProxyServer;
 import org.slf4j.Logger;
@@ -19,9 +20,10 @@ import java.util.UUID;
 @Plugin(
         id = "smartrejoin",
         name = "SmartRejoin",
-        version = "1.2",
+        version = BuildConstants.VERSION,
         description = "Smartly reconnects players to servers based on their last location.",
-        authors = {"Gemini", "Z.ai"}
+        authors = {"Gemini", "Z.ai"},
+        dependencies = {@Dependency(id = "navauth", optional = true)}
 )
 public class SmartRejoin {
 
@@ -32,11 +34,12 @@ public class SmartRejoin {
     private StorageManager storageManager;
     private ServerFinder serverFinder;
     private RejoinQueueManager rejoinQueueManager;
+    private SeamlessReconnectManager seamlessReconnectManager;
     private String leaveQueueCommandName = null;
 
     // Track players who were routed via modded routing
     // This prevents their last server from being overwritten in data.yml
-    private final Set<UUID> playersRoutedViaModdedRouting = new HashSet<>();
+    private final Set<UUID> playersRoutedViaModdedRouting = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @Inject
     public SmartRejoin(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory) {
@@ -64,6 +67,8 @@ public class SmartRejoin {
 
         this.serverFinder = new ServerFinder(this);
 
+        this.seamlessReconnectManager = new SeamlessReconnectManager(this);
+        this.seamlessReconnectManager.start();
         server.getEventManager().register(this, new PlayerEventHandler(this));
 
         CommandManager commandManager = server.getCommandManager();
@@ -91,6 +96,7 @@ public class SmartRejoin {
 
     @Subscribe
     public void onProxyShutdown(ProxyShutdownEvent event) {
+        if (seamlessReconnectManager != null) seamlessReconnectManager.stop();
         // Stop RejoinQueueManager if running
         if (rejoinQueueManager != null) {
             rejoinQueueManager.stop();
@@ -144,6 +150,7 @@ public class SmartRejoin {
                 }
             }
 
+            if (seamlessReconnectManager != null) seamlessReconnectManager.refresh();
             logger.info("Configuration reloaded successfully.");
         } else {
             logger.error("Failed to reload configuration. Please check the console for errors.");
@@ -191,6 +198,10 @@ public class SmartRejoin {
 
     public ServerFinder getServerFinder() {
         return serverFinder;
+    }
+
+    public SeamlessReconnectManager getSeamlessReconnectManager() {
+        return seamlessReconnectManager;
     }
 
     public RejoinQueueManager getRejoinQueueManager() {

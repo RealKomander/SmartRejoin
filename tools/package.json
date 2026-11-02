@@ -1,0 +1,12 @@
+{
+  "name": "smartrejoin-protocol-tests",
+  "private": true,
+  "scripts": {
+    "smoke": "node seamless-smoke.js",
+    "generate": "cd .. && NODE_PATH=tools/node_modules node tools/generate-freeze-protocols.js"
+  },
+  "devDependencies": {
+    "minecraft-data": "3.119.0",
+    "minecraft-protocol": "1.66.2"
+  }
+}
