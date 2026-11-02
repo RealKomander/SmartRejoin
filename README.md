@@ -13,7 +13,7 @@
 - ⚙️ Define custom rules based on a player's last server. For example, send players from a `bedwars_` game to the most populated `bedwars_lobby`.
 - ⚖️ Distributes players across lobbies by connecting them to the server with the **most** or **least** players, or to a **random** one.
 - 🛡️ Configure a safe fallback server (or a pool of servers) for new players or when a target server is offline.
-- 🧊 Keep players in their frozen, loaded world while a backend restarts (Minecraft 1.20.3+).
+- 🧊 Keep players in their frozen, loaded world while a backend restarts (Minecraft 1.20.3–26.3).
 - ⚡ Reload the configuration on-the-fly with a simple command.
 
 ---
@@ -145,7 +145,7 @@ rejoin_queue:
     list: [survival, creative]
 ```
 
-### Seamless reconnect (Minecraft 1.20.3 and newer)
+### Seamless reconnect (verified protocols 765–777: Minecraft 1.20.3–26.3)
 
 Seamless reconnect is an alternative to moving connected players to fallback during a
 backend outage. Their existing chunks, blocks, and entities remain visible. Native
@@ -196,9 +196,15 @@ seamless_reconnect:
 - Frozen worlds exist only in the currently connected client. Disconnecting destroys
   the session. A new login follows the ordinary rules, excluding backends currently
   known to be unavailable, and uses fallback instead of restoring a frozen world.
-- Clients older than 1.20.3 or protocols without a supported packet adapter use normal
-  fallback. This implementation targets Velocity 3.4.0; it checks its internal network
-  hooks when attaching and falls back normally if they are unavailable.
+- This release ships verified wire adapters for protocols **765–777**, covering
+  Minecraft **1.20.3–26.3**, including 26.2 (776) and 26.3 (777). There is no runtime
+  maximum-version check: a protocol is eligible whenever its verified adapter exists.
+  Future releases may still support native freezing, but packet IDs/layouts must be
+  verified before use. Missing modern adapters produce a warning once per protocol
+  and use normal fallback. Clients older than 1.20.3 use normal fallback.
+- The internal network hooks are tested on Velocity 3.4.0 build 563 and Velocity
+  4.3.1 build 45. Use the Java version required by your proxy (JDK 25 for Velocity
+  4.3.1); the plugin itself is compiled for Java 21.
 
 The input lock temporarily uses spectator mode to prevent local block interactions;
 the destination backend restores its normal game mode on successful reconnection.
@@ -227,6 +233,7 @@ your network. Its target must be registered, online, and have room.
 
 ### Building and testing
 
-Use JDK 21 and run `bash gradlew clean build`. The deployable release artifact is
-`build/libs/SmartRejoin-1.4.1.jar`; it includes the SQLite driver. The `-plain.jar`
+Use JDK 21 and run `bash gradlew clean build`. Verify generated packet metadata with
+`npm --prefix tools ci && npm --prefix tools run check:protocols`. The deployable release artifact is
+`build/libs/SmartRejoin-1.4.2.jar`; it includes the SQLite driver. The `-plain.jar`
 is for development and does not bundle runtime dependencies.

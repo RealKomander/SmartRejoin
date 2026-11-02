@@ -3,10 +3,11 @@
   "private": true,
   "scripts": {
     "smoke": "node seamless-smoke.js",
-    "generate": "cd .. && NODE_PATH=tools/node_modules node tools/generate-freeze-protocols.js"
+    "generate": "cd .. && NODE_PATH=tools/node_modules node tools/generate-freeze-protocols.js",
+    "check:protocols": "cd .. && NODE_PATH=tools/node_modules node tools/generate-freeze-protocols.js --check"
   },
   "devDependencies": {
     "minecraft-data": "3.119.0",
-    "minecraft-protocol": "1.66.2"
+    "minecraft-protocol": "1.68.0"
   }
 }

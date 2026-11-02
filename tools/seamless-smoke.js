@@ -1,5 +1,6 @@
-const mc = require('minecraft-protocol');
-const md = require('minecraft-data');
+if (process.env.MC_DATA_OVERLAY) require('./load-protocol-test-overlay');
+const mc = require(process.env.MC_PROTOCOL_MODULE || 'minecraft-protocol');
+const md = require(process.env.MC_DATA_MODULE || 'minecraft-data');
 const {spawn} = require('child_process');
 const fs = require('fs');
 const assert = require('assert');
@@ -42,12 +43,17 @@ let lobby;
 const packets = [];
 const proxyLog = [];
 function backend(name, port) {
-  const server = mc.createServer({version, host:'127.0.0.1', port, 'online-mode':false, keepAlive:true, hideErrors:true});
+  const server = mc.createServer({version, host:'127.0.0.1', port, 'online-mode':false, keepAlive:true, hideErrors:true, beforeLogin(c) {
+    if (data.version.version === 777) {
+      const write=c.write.bind(c);
+      c.write=(name, packet)=>write(name, name==='success' ? {...packet, sessionId:require('crypto').randomUUID()} : packet);
+    }
+  }});
   server.on('error', e => errors.push(`${name}: ${e.stack}`));
   server.on('playerJoin', c => {
     joins.push(name+':'+c.username);
     c.on('error',e=>errors.push(`${name} client: ${e.message}`));
-    c.write('login',{...data.loginPacket, entityId: name==='survival'?11:22, gameMode:0, previousGameMode:0, enforceSecureChat:false, hashedSeed:[0,0], maxPlayers:20});
+    c.write('login',{...data.loginPacket, entityId: name==='survival'?11:22, gameMode:0, previousGameMode:0, enforceSecureChat:false, hashedSeed:[0,0], maxPlayers:20, ...(data.version.version === 777 ? {worldState:{...data.loginPacket.worldState, previousGamemode:0}, onlineMode:false} : {})});
     c.write('abilities',{flags:0,flyingSpeed:0.05,walkingSpeed:0.1});
     const position={x:10,y:80,z:20,yaw:45,pitch:15,flags:0,teleportId:1};
     if(data.version.version>=768)Object.assign(position,{dx:0,dy:0,dz:0});
@@ -60,7 +66,7 @@ function backend(name, port) {
 }
 async function waitUntil(fn,description,timeout=15000) {
  const end=Date.now()+timeout;
- while(!fn()) {if(Date.now()>end)throw Error('Timeout: '+description+'\nproxy:\n'+proxyLog.join(''));await sleep(50);}
+ while(!fn()) {if(process.env.DECODE_DEBUG==='1' && proxyLog.some(l=>l.includes('ERROR'))) throw Error('Proxy decode error; see test log'); if(Date.now()>end)throw Error('Timeout: '+description+'\nFixture errors:\n'+errors.join('\n')+'\nproxy:\n'+proxyLog.join(''));await sleep(50);}
 }
 async function stopServer(server, restartKick=false) {
   if (restartKick) {
@@ -76,7 +82,7 @@ function connect(name) {
  c.on('error',e=>errors.push('client:'+e.message));
  c.on('packet',(packet,meta)=>{if(['login','respawn','position','set_ticking_state','abilities','action_bar','game_state_change','spawn_entity','entity_destroy','unload_chunk'].includes(meta.name))packets.push({user:name,name:meta.name,...packet});});
  c.on('end',reason=>console.log('CLIENT END',reason));
- c.on('position',p=>c.write('teleport_confirm',{teleportId:p.teleportId}));
+ c.on('position',p=>c.write('teleport_confirm',{teleportId:p.teleportId,...(data.version.version >= 777 ? {x:p.x,y:p.y,z:p.z,yRot:p.yaw,xRot:p.pitch} : {})}));
  return c;
 }
 (async()=>{
@@ -89,7 +95,7 @@ function connect(name) {
  const crypto=require('crypto');const hash=crypto.createHash('md5').update('OfflinePlayer:FreezeTester').digest();hash[6]=(hash[6]&15)|48;hash[8]=(hash[8]&63)|128;const h=hash.toString('hex');const uuid=`${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
  const rh=crypto.createHash('md5').update('OfflinePlayer:RelogTester').digest();rh[6]=(rh[6]&15)|48;rh[8]=(rh[8]&63)|128;const r=rh.toString('hex');const relogUuid=`${r.slice(0,8)}-${r.slice(8,12)}-${r.slice(12,16)}-${r.slice(16,20)}-${r.slice(20)}`;
  fs.writeFileSync('plugins/smartrejoin/data.yml',`${uuid}: survival\n${relogUuid}: survival\n`);
- proxy=spawn('java',['-Dterminal.jline=false','-Dterminal.ansi=false','-jar','velocity.jar'],{stdio:['pipe','pipe','pipe']});
+ proxy=spawn(process.env.JAVA_BIN || 'java',['-Dterminal.jline=false','-Dterminal.ansi=false', ...(process.env.DECODE_DEBUG === '1' ? ['-Dvelocity.packet-decode-logging=true'] : []), '-jar','velocity.jar'],{stdio:['pipe','pipe','pipe']});
  proxy.stdout.on('data',d=>proxyLog.push(d.toString()));proxy.stderr.on('data',d=>proxyLog.push(d.toString()));
  await waitUntil(()=>proxyLog.some(l=>l.includes('Done (')),'proxy startup');
  if (queueMode) {

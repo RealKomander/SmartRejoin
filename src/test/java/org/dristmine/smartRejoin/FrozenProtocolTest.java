@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class FrozenProtocolTest {
     @Test void positionRoundTripsAcrossTheWireFormatChange() {
-        for (int version = 765; version <= 775; version++) {
+        for (int version = 765; version <= 777; version++) {
             FrozenProtocol protocol = FrozenProtocol.forVersion(version);
             assertNotNull(protocol);
             FrozenProtocol.Pose pose = new FrozenProtocol.Pose();
@@ -26,6 +26,32 @@ class FrozenProtocolTest {
                 assertFalse(bytes.isReadable());
             } finally { bytes.release(); }
         }
+    }
+
+    @Test void protocol777UsesItsOwnPacketIdsRatherThanProtocol775() {
+        FrozenProtocol protocol = FrozenProtocol.forVersion(777);
+        assertNotNull(protocol);
+        assertEquals(0x41, protocol.abilities);
+        assertEquals(0x49, protocol.position);
+        assertEquals(0x82, protocol.ticking);
+        assertEquals(0x2d, protocol.keepalive);
+        assertEquals(0x27, protocol.gamestate);
+        assertEquals(0x78, protocol.configuration);
+        assertEquals(0x1e, protocol.move);
+        assertEquals(0x1f, protocol.moveLook);
+        assertEquals(0x20, protocol.look);
+        assertEquals(0x07, protocol.command);
+        assertEquals(0x08, protocol.signedCommand);
+        assertEquals(0x1c, protocol.keepaliveReply);
+        ByteBuf freeze = protocol.ticking(true);
+        try {
+            // Independently specified wire bytes: VarInt 0x82, float 20, bool true.
+            byte[] actual = new byte[freeze.readableBytes()];
+            freeze.readBytes(actual);
+            assertArrayEquals(java.util.HexFormat.of().parseHex("820141a0000001"), actual);
+        } finally { freeze.release(); }
+        assertNotEquals(FrozenProtocol.forVersion(775).ticking, protocol.ticking);
+        assertNotNull(FrozenProtocol.forVersion(776));
     }
 
     @Test void nativeFreezeAndMovementLockHaveExpectedPayloads() {

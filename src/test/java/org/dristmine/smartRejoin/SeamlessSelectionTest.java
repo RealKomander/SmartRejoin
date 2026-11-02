@@ -57,4 +57,20 @@ class SeamlessSelectionTest {
         assertFalse(manager.isEnabledFor("lobby"));
         assertTrue(manager.isEnabledFor("survival"));
     }
+    @Test void missingFutureAdapterWarnsOnceInsteadOfSilentlySkipping() {
+        var logger = mock(org.slf4j.Logger.class);
+        when(plugin.getLogger()).thenReturn(logger);
+        var player = mock(com.velocitypowered.api.proxy.Player.class);
+        var protocol = mock(com.velocitypowered.api.network.ProtocolVersion.class);
+        when(player.getUniqueId()).thenReturn(java.util.UUID.randomUUID());
+        when(player.getProtocolVersion()).thenReturn(protocol);
+        when(protocol.getProtocol()).thenReturn(778);
+        var server = mock(com.velocitypowered.api.proxy.server.RegisteredServer.class);
+        when(server.getServerInfo()).thenReturn(new com.velocitypowered.api.proxy.server.ServerInfo(
+                "survival", new java.net.InetSocketAddress("localhost", 25565)));
+        var event = new com.velocitypowered.api.event.player.ServerConnectedEvent(player, server, null);
+        manager.onServerConnected(event);
+        manager.onServerConnected(event);
+        verify(logger, times(1)).warn(contains("no verified packet adapter"), eq(778), same(protocol));
+    }
 }

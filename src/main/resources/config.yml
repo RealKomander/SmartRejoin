@@ -181,7 +181,7 @@ rejoin_queue:
   # When enabled, detailed logs will be printed for queue operations.
   debug: false
 
-# --- Seamless Reconnect (Minecraft 1.20.3+) ---
+# --- Seamless Reconnect (Minecraft 1.20.3–26.3; protocols 765–777) ---
 # Alternative to fallback for players ALREADY in a backend when it goes offline.
 # Retains their loaded chunks/entities, freezes client world ticks, locks movement
 # and interactions, and returns them when the backend responds again.

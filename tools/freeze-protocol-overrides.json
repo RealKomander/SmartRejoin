@@ -1,0 +1,724 @@
+{
+  "776": {
+    "version": {
+      "version": 776,
+      "minecraftVersion": "26.2"
+    },
+    "source": {
+      "schema": "https://github.com/DallasCarraher/minecraft-data/blob/924e26d6b3bb8f97a5d1e73d6190b09879c2e1e2/data/pc/26.2/protocol.json",
+      "crossCheck": "https://github.com/ViaVersion/ViaVersion/tree/4d5d5e3e7bc5c4f29455ce3181e03320cc60af4c/common/src/main/java/com/viaversion/viaversion/protocols/v26_2to26_3"
+    },
+    "protocol": {
+      "play": {
+        "toClient": {
+          "types": {
+            "packet": [
+              "container",
+              [
+                {
+                  "name": "name",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "varint",
+                      "mappings": {
+                        "0x26": "game_state_change",
+                        "0x2c": "keep_alive",
+                        "0x40": "abilities",
+                        "0x48": "position",
+                        "0x76": "start_configuration",
+                        "0x7f": "set_ticking_state"
+                      }
+                    }
+                  ]
+                }
+              ]
+            ],
+            "packet_abilities": [
+              "container",
+              [
+                {
+                  "name": "flags",
+                  "type": "i8"
+                },
+                {
+                  "name": "flyingSpeed",
+                  "type": "f32"
+                },
+                {
+                  "name": "walkingSpeed",
+                  "type": "f32"
+                }
+              ]
+            ],
+            "packet_position": [
+              "container",
+              [
+                {
+                  "name": "teleportId",
+                  "type": "varint"
+                },
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "dx",
+                  "type": "f64"
+                },
+                {
+                  "name": "dy",
+                  "type": "f64"
+                },
+                {
+                  "name": "dz",
+                  "type": "f64"
+                },
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "PositionUpdateRelatives"
+                }
+              ]
+            ],
+            "packet_set_ticking_state": [
+              "container",
+              [
+                {
+                  "name": "tick_rate",
+                  "type": "f32"
+                },
+                {
+                  "name": "is_frozen",
+                  "type": "bool"
+                }
+              ]
+            ],
+            "packet_keep_alive": [
+              "container",
+              [
+                {
+                  "name": "keepAliveId",
+                  "type": "i64"
+                }
+              ]
+            ],
+            "packet_game_state_change": [
+              "container",
+              [
+                {
+                  "name": "reason",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "u8",
+                      "mappings": {
+                        "0": "no_respawn_block_available",
+                        "1": "start_raining",
+                        "2": "stop_raining",
+                        "3": "change_game_mode",
+                        "4": "win_game",
+                        "5": "demo_event",
+                        "6": "play_arrow_hit_sound",
+                        "7": "rain_level_change",
+                        "8": "thunder_level_change",
+                        "9": "puffer_fish_sting",
+                        "10": "guardian_elder_effect",
+                        "11": "immediate_respawn",
+                        "12": "limited_crafting",
+                        "13": "level_chunks_load_start"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "gameMode",
+                  "type": "f32"
+                }
+              ]
+            ],
+            "packet_start_configuration": [
+              "container",
+              []
+            ],
+            "PositionUpdateRelatives": [
+              "bitflags",
+              {
+                "type": "u32",
+                "flags": [
+                  "x",
+                  "y",
+                  "z",
+                  "yaw",
+                  "pitch",
+                  "dx",
+                  "dy",
+                  "dz",
+                  "yawDelta"
+                ]
+              }
+            ]
+          }
+        },
+        "toServer": {
+          "types": {
+            "packet": [
+              "container",
+              [
+                {
+                  "name": "name",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "varint",
+                      "mappings": {
+                        "0x07": "chat_command",
+                        "0x08": "chat_command_signed",
+                        "0x1c": "keep_alive",
+                        "0x1e": "position",
+                        "0x1f": "position_look",
+                        "0x20": "look"
+                      }
+                    }
+                  ]
+                }
+              ]
+            ],
+            "packet_position": [
+              "container",
+              [
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_look": [
+              "container",
+              [
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_position_look": [
+              "container",
+              [
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_chat_command": [
+              "container",
+              [
+                {
+                  "name": "command",
+                  "type": "string"
+                }
+              ]
+            ],
+            "packet_chat_command_signed": [
+              "container",
+              [
+                {
+                  "name": "command",
+                  "type": "string"
+                },
+                {
+                  "name": "timestamp",
+                  "type": "i64"
+                },
+                {
+                  "name": "salt",
+                  "type": "i64"
+                },
+                {
+                  "name": "argumentSignatures",
+                  "type": [
+                    "array",
+                    {
+                      "countType": "varint",
+                      "type": [
+                        "container",
+                        [
+                          {
+                            "name": "argumentName",
+                            "type": "string"
+                          },
+                          {
+                            "name": "signature",
+                            "type": [
+                              "buffer",
+                              {
+                                "count": 256
+                              }
+                            ]
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "messageCount",
+                  "type": "varint"
+                },
+                {
+                  "name": "acknowledged",
+                  "type": [
+                    "buffer",
+                    {
+                      "count": 3
+                    }
+                  ]
+                },
+                {
+                  "name": "checksum",
+                  "type": "u8"
+                }
+              ]
+            ],
+            "packet_keep_alive": [
+              "container",
+              [
+                {
+                  "name": "keepAliveId",
+                  "type": "i64"
+                }
+              ]
+            ],
+            "MovementFlags": [
+              "bitflags",
+              {
+                "type": "u8",
+                "flags": [
+                  "onGround",
+                  "hasHorizontalCollision"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "777": {
+    "version": {
+      "version": 777,
+      "minecraftVersion": "26.3"
+    },
+    "source": {
+      "schema": "https://github.com/DallasCarraher/minecraft-data/blob/924e26d6b3bb8f97a5d1e73d6190b09879c2e1e2/data/pc/26.3/protocol.json",
+      "crossCheck": "https://github.com/ViaVersion/ViaVersion/tree/4d5d5e3e7bc5c4f29455ce3181e03320cc60af4c/common/src/main/java/com/viaversion/viaversion/protocols/v26_2to26_3"
+    },
+    "protocol": {
+      "play": {
+        "toClient": {
+          "types": {
+            "packet": [
+              "container",
+              [
+                {
+                  "name": "name",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "varint",
+                      "mappings": {
+                        "0x27": "game_state_change",
+                        "0x2d": "keep_alive",
+                        "0x41": "abilities",
+                        "0x49": "position",
+                        "0x78": "start_configuration",
+                        "0x82": "set_ticking_state"
+                      }
+                    }
+                  ]
+                }
+              ]
+            ],
+            "packet_abilities": [
+              "container",
+              [
+                {
+                  "name": "flags",
+                  "type": "i8"
+                },
+                {
+                  "name": "flyingSpeed",
+                  "type": "f32"
+                },
+                {
+                  "name": "walkingSpeed",
+                  "type": "f32"
+                }
+              ]
+            ],
+            "packet_position": [
+              "container",
+              [
+                {
+                  "name": "teleportId",
+                  "type": "varint"
+                },
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "dx",
+                  "type": "f64"
+                },
+                {
+                  "name": "dy",
+                  "type": "f64"
+                },
+                {
+                  "name": "dz",
+                  "type": "f64"
+                },
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "PositionUpdateRelatives"
+                }
+              ]
+            ],
+            "packet_set_ticking_state": [
+              "container",
+              [
+                {
+                  "name": "tick_rate",
+                  "type": "f32"
+                },
+                {
+                  "name": "is_frozen",
+                  "type": "bool"
+                }
+              ]
+            ],
+            "packet_keep_alive": [
+              "container",
+              [
+                {
+                  "name": "keepAliveId",
+                  "type": "i64"
+                }
+              ]
+            ],
+            "packet_game_state_change": [
+              "container",
+              [
+                {
+                  "name": "reason",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "u8",
+                      "mappings": {
+                        "0": "no_respawn_block_available",
+                        "1": "start_raining",
+                        "2": "stop_raining",
+                        "3": "change_game_mode",
+                        "4": "win_game",
+                        "5": "demo_event",
+                        "6": "play_arrow_hit_sound",
+                        "7": "rain_level_change",
+                        "8": "thunder_level_change",
+                        "9": "puffer_fish_sting",
+                        "10": "guardian_elder_effect",
+                        "11": "immediate_respawn",
+                        "12": "limited_crafting",
+                        "13": "level_chunks_load_start"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "name": "gameMode",
+                  "type": "f32"
+                }
+              ]
+            ],
+            "packet_start_configuration": [
+              "container",
+              []
+            ],
+            "PositionUpdateRelatives": [
+              "bitflags",
+              {
+                "type": "u32",
+                "flags": [
+                  "x",
+                  "y",
+                  "z",
+                  "yaw",
+                  "pitch",
+                  "dx",
+                  "dy",
+                  "dz",
+                  "yawDelta"
+                ]
+              }
+            ]
+          }
+        },
+        "toServer": {
+          "types": {
+            "packet": [
+              "container",
+              [
+                {
+                  "name": "name",
+                  "type": [
+                    "mapper",
+                    {
+                      "type": "varint",
+                      "mappings": {
+                        "0x07": "chat_command",
+                        "0x08": "chat_command_signed",
+                        "0x1c": "keep_alive",
+                        "0x1e": "position",
+                        "0x1f": "position_look",
+                        "0x20": "look"
+                      }
+                    }
+                  ]
+                }
+              ]
+            ],
+            "packet_position": [
+              "container",
+              [
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_look": [
+              "container",
+              [
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_position_look": [
+              "container",
+              [
+                {
+                  "name": "x",
+                  "type": "f64"
+                },
+                {
+                  "name": "y",
+                  "type": "f64"
+                },
+                {
+                  "name": "z",
+                  "type": "f64"
+                },
+                {
+                  "name": "yaw",
+                  "type": "f32"
+                },
+                {
+                  "name": "pitch",
+                  "type": "f32"
+                },
+                {
+                  "name": "flags",
+                  "type": "MovementFlags"
+                }
+              ]
+            ],
+            "packet_chat_command": [
+              "container",
+              [
+                {
+                  "name": "command",
+                  "type": "string"
+                }
+              ]
+            ],
+            "packet_chat_command_signed": [
+              "container",
+              [
+                {
+                  "name": "command",
+                  "type": "string"
+                },
+                {
+                  "name": "timestamp",
+                  "type": "i64"
+                },
+                {
+                  "name": "salt",
+                  "type": "i64"
+                },
+                {
+                  "name": "argumentSignatures",
+                  "type": [
+                    "array",
+                    {
+                      "countType": "varint",
+                      "type": [
+                        "container",
+                        [
+                          {
+                            "name": "argumentName",
+                            "type": "string"
+                          },
+                          {
+                            "name": "signature",
+                            "type": [
+                              "buffer",
+                              {
+                                "count": 256
+                              }
+                            ]
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "messageCount",
+                  "type": "varint"
+                },
+                {
+                  "name": "acknowledged",
+                  "type": [
+                    "buffer",
+                    {
+                      "count": 3
+                    }
+                  ]
+                },
+                {
+                  "name": "checksum",
+                  "type": "u8"
+                }
+              ]
+            ],
+            "packet_keep_alive": [
+              "container",
+              [
+                {
+                  "name": "keepAliveId",
+                  "type": "i64"
+                }
+              ]
+            ],
+            "MovementFlags": [
+              "bitflags",
+              {
+                "type": "u8",
+                "flags": [
+                  "onGround",
+                  "hasHorizontalCollision"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -31,6 +31,7 @@ public final class SeamlessReconnectManager {
     private static final String BACKEND_HOOK = "smartrejoin-freeze-backend";
     private final SmartRejoin plugin;
     private final java.util.function.LongSupplier recoveryClock;
+    private final Set<Integer> warnedProtocols = ConcurrentHashMap.newKeySet();
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Set<String> unavailable = ConcurrentHashMap.newKeySet();
     private final Set<String> pingsInFlight = ConcurrentHashMap.newKeySet();
@@ -103,7 +104,15 @@ public final class SeamlessReconnectManager {
                 !sessions.containsKey(event.getPlayer().getUniqueId())) return;
         Player player = event.getPlayer();
         FrozenProtocol protocol = FrozenProtocol.forVersion(player.getProtocolVersion().getProtocol());
-        if (protocol == null || !new AuthenticationGuard(plugin).canRoute(player)) return;
+        if (protocol == null) {
+            int version = player.getProtocolVersion().getProtocol();
+            if (version >= 765 && warnedProtocols.add(version)) {
+                plugin.getLogger().warn("Seamless reconnect has no verified packet adapter for client protocol {} ({}); using normal fallback. Update SmartRejoin to add support.",
+                        version, player.getProtocolVersion());
+            }
+            return;
+        }
+        if (!new AuthenticationGuard(plugin).canRoute(player)) return;
         try {
             Object minecraftConnection = invoke(player, "getConnection");
             Channel client = (Channel) invoke(minecraftConnection, "getChannel");
